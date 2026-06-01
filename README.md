@@ -1,20 +1,39 @@
+<div align="center">
+
 # DeepRefine-Skill
 
-<p align="center">
-  <a href="https://pypi.org/project/deeprefine-cli/"><img src="https://img.shields.io/pypi/v/deeprefine-cli" alt="PyPI"></a>
-  <a href="https://pypi.org/project/deeprefine-cli/"><img src="https://img.shields.io/pypi/pyversions/deeprefine-cli" alt="Python"></a>
-  <a href="https://github.com/HKUST-KnowComp/DeepRefine"><img src="https://img.shields.io/badge/DeepRefine-HKUST--KnowComp-blue" alt="DeepRefine"></a>
-</p>
 
-<p align="center">
-  Cursor skill &amp; CLI to refine <a href="https://github.com/safishamsi/graphify">graphify</a> knowledge graphs with <a href="https://github.com/HKUST-KnowComp/DeepRefine">DeepRefine</a>.
-</p>
+[![PyPi](https://img.shields.io/badge/HuggingFace-DeepRefine-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.3/)
+[![Python](https://img.shields.io/badge/HuggingFace-DeepRefine-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.3/)
+[![Paper](https://img.shields.io/badge/HuggingFace-DeepRefine-b31b1b.svg)](https://arxiv.org/pdf/2605.10488)
+[![Project](https://img.shields.io/badge/HuggingFace-DeepRefine-green.svg)](https://github.com/HKUST-KnowComp/DeepRefine)
 
-| | |
-|---|---|
-| **PyPI** | [`deeprefine-cli`](https://pypi.org/project/deeprefine-cli/) |
-| **CLI** | `deeprefine` |
-| **Skill** | `/deeprefine` in Cursor |
+</div>
+
+Type `/deeprefine` in your AI coding assistant after you've built a **[graphify](https://github.com/safishamsi/graphify)** knowledge base — it patches `graphify-out/graph.json` from your session's query history to evolve your LLM-Wiki.
+
+Works in **Cursor** (install the skill once with `deeprefine cursor install`). The same workflow is available from any terminal via the `deeprefine` CLI ([`deeprefine-cli` on PyPI](https://pypi.org/project/deeprefine-cli/)).
+
+```
+/deeprefine
+```
+
+**Typical flow:** `graphify .` → `graphify query "..."` → record the question → `/deeprefine`.
+
+```bash
+deeprefine history add --query "your question"   # or let the agent do this
+```
+
+That's it. Under `graphify-out/.deeprefine/` you get:
+
+```
+graphify-out/
+├── graph.json                          updated graph (graphify reads this)
+└── .deeprefine/
+    ├── history.jsonl                   queries queued for refinement
+    ├── refinement_results_*.jsonl      run logs
+    └── graph.json.bak                  backup before each refine
+```
 
 > **Standalone repo.** Model code (`autorefiner`, `atlas_rag`) lives in a separate [DeepRefine](https://github.com/HKUST-KnowComp/DeepRefine) checkout.  
 > `pip install deeprefine-cli` ships the CLI and `SKILL.md`. `deeprefine refine` still needs DeepRefine + `atlastune` + inference (today: local vLLM).
@@ -23,10 +42,9 @@
 
 ## Roadmap
 
-| Status | Item |
-|:------:|------|
-| ⬜ | **Third-party APIs (no local vLLM)** — OpenAI-compatible hosted endpoints for refine LLM and embeddings (OpenAI, Azure, Together, Fireworks, DeepSeek, custom gateways). |
-| | `DEEPREFINE_LLM_URL` / `DEEPREFINE_EMBED_URL` already accept any compatible base URL; next: provider presets, real API keys, documented model pairings. |
+**Inference today:** local vLLM only (see [Inference](#4-inference-vllm) below).
+
+**Coming soon:** third-party API support (OpenAI-compatible hosted LLM + embeddings) — no local GPU required.
 
 ---
 
