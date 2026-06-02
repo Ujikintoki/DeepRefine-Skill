@@ -3,8 +3,8 @@
 # DeepRefine-Skill
 
 
-[![PyPi](https://img.shields.io/badge/PyPi-v0.1.4-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.4/)
-[![Python](https://img.shields.io/badge/Python-3.10,3.11,3.12-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.4/)
+[![PyPi](https://img.shields.io/badge/PyPi-v0.1.5-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.5/)
+[![Python](https://img.shields.io/badge/Python-3.10,3.11,3.12-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.5/)
 [![Paper](https://img.shields.io/badge/Paper-DeepRefine-b31b1b.svg)](https://arxiv.org/pdf/2605.10488)
 [![Project](https://img.shields.io/badge/Project-DeepRefine-green.svg)](https://github.com/HKUST-KnowComp/DeepRefine)
 
@@ -12,7 +12,7 @@
 
 Type `/deeprefine` in your AI coding assistant after you've built a **[graphify](https://github.com/safishamsi/graphify)** knowledge base — it patches `graphify-out/graph.json` from your session's query history to evolve your LLM-Wiki.
 
-Works in **Cursor** (install the skill once with `deeprefine cursor install`). The same workflow is available from any terminal via the `deeprefine` CLI ([`deeprefine-cli` on PyPI](https://pypi.org/project/deeprefine-cli/)).
+Works in **Cursor** (install the skill once with `deeprefine cursor install`). In Cursor, `/deeprefine` runs in **agent-native mode** (no extra API key needed). The runtime CLI (`deeprefine refine`) is still available for vLLM/API execution.
 
 ```
 /deeprefine
@@ -36,13 +36,13 @@ graphify-out/
 ```
 
 > **Standalone repo.** Model code (`autorefiner`, `atlas_rag`) lives in a separate [DeepRefine](https://github.com/HKUST-KnowComp/DeepRefine) checkout.  
-> `pip install deeprefine-cli` ships the CLI and `SKILL.md`. `deeprefine refine` still needs DeepRefine + `atlastune`, with default inference from your current API model setup; you can override with custom base URL and API key.
+> `pip install deeprefine-cli` ships the CLI and `SKILL.md`. In Cursor, `/deeprefine` uses agent-native refinement; `deeprefine refine` uses DeepRefine runtime (vLLM/API) when you explicitly choose CLI execution.
 
 ---
 
 ## News
 
-- [2026/6/2] deeprefine-cli v0.1.4 has been released! Customize your LLM api.
+- [2026/6/2] deeprefine-cli v0.1.5 has been released! Customize your LLM api in CLI.
 
 ---
 
@@ -54,7 +54,7 @@ graphify-out/
 | 2 | `pip install deeprefine-cli` |
 | 3 | `deeprefine cursor install` in your KB project |
 | 4 | (Optional) start local vLLM, or use your API provider |
-| 5 | `deeprefine history add` → `deeprefine refine` |
+| 5 | Cursor chat: `/deeprefine` *(auto uses/adds query context)*; CLI mode: `history add` + `refine` |
 
 ```bash
 # 1) DeepRefine (once)
@@ -83,9 +83,19 @@ export DEEPREFINE_EMBED_MODEL=your_embed_model
 # export DEEPREFINE_API_KEY=your_shared_api_key
 # optional model overrides:
 
-# 5) Refine
+# 5a) Refine in Cursor chat (agent-native, recommended)
+# type in chat:
+# /deeprefine
+
+# 5b) Refine in terminal / CLI (manual flow)
 deeprefine history add --query "your question"
 deeprefine refine
+```
+
+In **Cursor chat** (agent):
+
+```text
+/deeprefine
 ```
 
 ---
@@ -229,8 +239,8 @@ deeprefine cursor install
 |:-:|--------|
 | 1 | `graphify .` or `/graphify .` → `graphify-out/graph.json` |
 | 2 | `graphify query "..."` |
-| 3 | `deeprefine history add --query "..."` |
-| 4 | `deeprefine refine` or `/deeprefine` |
+| 3 | Cursor chat: `/deeprefine` *(recommended; no manual `history add` needed)* |
+| 4 | CLI alternative: `deeprefine history add --query "..."` → `deeprefine refine` |
 | 5 | *(optional)* `graphify query "..."` to verify |
 
 ---

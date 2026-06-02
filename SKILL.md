@@ -5,7 +5,7 @@ description: >-
   Reafiner based on session query history. Use when the user runs /deeprefine,
   asks to improve the graphify KB after Q&A, or wants to patch graph.json from
   failed retrieval queries.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # DeepRefine (graphify)
@@ -36,16 +36,24 @@ Inference defaults to your current API model setup (`OPENAI_API_KEY` or `DEEPREF
 
 Optional: local vLLM from DeepRefine (embedding `8128`, refine model `8134`; see `scripts/vllm_serve/`).
 
-## `/deeprefine`
+## `/deeprefine` (agent-native)
 
 From the **KB project root** (with `graphify-out/graph.json`):
 
 ```bash
 deeprefine history add --query "..."   # after graph Q&A
-deeprefine refine                      # all pending queries
+/deeprefine                            # run inside agent (no extra API key)
 ```
 
-Do not hand-edit `graph.json` for refinement.
+What the agent should do when `/deeprefine` is invoked:
+
+1. Load pending queries from `graphify-out/.deeprefine/history.jsonl`.
+2. Read `graphify-out/graph.json`.
+3. Propose and apply minimal graph updates directly to `graph.json` for unresolved queries.
+4. Write a timestamped log to `graphify-out/.deeprefine/refinement_results_*.jsonl`.
+5. Mark processed history items as `refined: true`.
+
+Use `deeprefine refine` CLI only when explicitly asked to run DeepRefine runtime (vLLM/API).
 
 ## Paths
 
