@@ -3,8 +3,8 @@
 # DeepRefine-Skill
 
 
-[![PyPi](https://img.shields.io/badge/PyPi-v0.1.5-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.5/)
-[![Python](https://img.shields.io/badge/Python-3.10,3.11,3.12-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.5/)
+[![PyPi](https://img.shields.io/badge/PyPi-v0.1.6-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.6/)
+[![Python](https://img.shields.io/badge/Python-3.10,3.11,3.12-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.6/)
 [![Paper](https://img.shields.io/badge/Paper-DeepRefine-b31b1b.svg)](https://arxiv.org/pdf/2605.10488)
 [![Project](https://img.shields.io/badge/Project-DeepRefine-green.svg)](https://github.com/HKUST-KnowComp/DeepRefine)
 
@@ -12,17 +12,13 @@
 
 Type `/deeprefine` in your AI coding assistant after you've built a **[graphify](https://github.com/safishamsi/graphify)** knowledge base — it patches `graphify-out/graph.json` from your session's query history to evolve your LLM-Wiki.
 
-Works in **Cursor** (install the skill once with `deeprefine cursor install`). In Cursor, `/deeprefine` runs in **agent-native mode** (no extra API key needed). The runtime CLI (`deeprefine refine`) is still available for vLLM/API execution.
+Works in **Cursor** (`deeprefine cursor install`). **`/deeprefine`** runs the **same control flow as `Reafiner.refine()`** in the agent: `graphify query` / k-hop reads (no FAISS), session LLM for judgement/abduction/actions, mandatory `loop_trace_*.json`, then `deeprefine apply`. Optional **`deeprefine refine`** = full FAISS + API runtime.
 
 ```
 /deeprefine
 ```
 
-**Typical flow:** `graphify .` → `graphify query "..."` → record the question → `/deeprefine`.
-
-```bash
-deeprefine history add --query "your question"   # or let the agent do this
-```
+**Typical flow:** `graphify .` → `graphify query "..."` → `/deeprefine` (agent loop: search → judge → abduct → actions → `deeprefine apply`).
 
 That's it. Under `graphify-out/.deeprefine/` you get:
 
@@ -36,13 +32,13 @@ graphify-out/
 ```
 
 > **Standalone repo.** Model code (`autorefiner`, `atlas_rag`) lives in a separate [DeepRefine](https://github.com/HKUST-KnowComp/DeepRefine) checkout.  
-> `pip install deeprefine-cli` ships the CLI and `SKILL.md`. In Cursor, `/deeprefine` uses agent-native refinement; `deeprefine refine` uses DeepRefine runtime (vLLM/API) when you explicitly choose CLI execution.
+> `pip install deeprefine-cli` ships the CLI and `SKILL.md`. **Agent mode** (`/deeprefine`): same loop logic, no FAISS retriever, no extra API keys. **CLI mode** (`deeprefine refine`): full `Reafiner` + embeddings (vLLM or API).
 
 ---
 
 ## News
 
-- [2026/6/2] deeprefine-cli v0.1.5 has been released! Customize your LLM api in CLI.
+- [2026/6/2] deeprefine-cli v0.1.6 has been released! Customize your LLM api in CLI.
 
 ---
 
@@ -54,7 +50,7 @@ graphify-out/
 | 2 | `pip install deeprefine-cli` |
 | 3 | `deeprefine cursor install` in your KB project |
 | 4 | (Optional) start local vLLM, or use your API provider |
-| 5 | Cursor chat: `/deeprefine` *(auto uses/adds query context)*; CLI mode: `history add` + `refine` |
+| 5 | Cursor: `/deeprefine` *(agent loop)*; or terminal: `history add` + `deeprefine refine` |
 
 ```bash
 # 1) DeepRefine (once)
@@ -83,19 +79,11 @@ export DEEPREFINE_EMBED_MODEL=your_embed_model
 # export DEEPREFINE_API_KEY=your_shared_api_key
 # optional model overrides:
 
-# 5a) Refine in Cursor chat (agent-native, recommended)
-# type in chat:
-# /deeprefine
-
-# 5b) Refine in terminal / CLI (manual flow)
+# 5) Refine
+# Cursor: /deeprefine  (agent loop: graphify query + judgement/abduction/actions + deeprefine apply)
+# Terminal CLI mode:
 deeprefine history add --query "your question"
 deeprefine refine
-```
-
-In **Cursor chat** (agent):
-
-```text
-/deeprefine
 ```
 
 ---
@@ -114,11 +102,13 @@ In **Cursor chat** (agent):
         ▼ graphify
    graph.json ◄────────────────────────┐
         │                              │
-        ▼ graphify query               │ deeprefine refine
-   (Q&A session)                      │
+        ▼ graphify query "..."         │ deeprefine refine
+        ▼ graphify query "..."         │ (per session query)
+        ▼   ...                        │
+   (many Q&A in session)               │
         │                              │
-        ▼ deeprefine history add       │
-   history.jsonl ──────────────────────┘
+        ▼ /deeprefine                  │
+ (DeepRefine loop) ────────────────────┘
         │
         ▼ graphify query (verify)
 ```
@@ -239,8 +229,8 @@ deeprefine cursor install
 |:-:|--------|
 | 1 | `graphify .` or `/graphify .` → `graphify-out/graph.json` |
 | 2 | `graphify query "..."` |
-| 3 | Cursor chat: `/deeprefine` *(recommended; no manual `history add` needed)* |
-| 4 | CLI alternative: `deeprefine history add --query "..."` → `deeprefine refine` |
+| 3 | Cursor chat: `/deeprefine` *(agent loop; no manual history add)* |
+| 4 | Terminal: `deeprefine history add` → `deeprefine refine` *(FAISS + API/vLLM)* |
 | 5 | *(optional)* `graphify query "..."` to verify |
 
 ---
@@ -257,6 +247,8 @@ All commands below run from **KB project root**.
 | `deeprefine refine` | Refine all pending queries |
 | `deeprefine refine --query "..."` | Refine one query (also recorded) |
 | `deeprefine refine --rebuild-index` | Rebuild FAISS before refine |
+| `deeprefine loop init/validate/finish` | Agent loop trace (enforces Reafiner rules) |
+| `deeprefine apply --trace-file T --refinement-file F` | Apply actions (requires valid trace) |
 | `deeprefine index --rebuild` | Rebuild FAISS cache only |
 | `deeprefine cursor install \| uninstall` | Manage Cursor skill |
 

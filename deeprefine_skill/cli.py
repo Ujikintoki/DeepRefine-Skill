@@ -91,6 +91,131 @@ def cmd_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_apply(args: argparse.Namespace) -> int:
+    """Apply <refinement> actions (from agent loop) to graph.json."""
+    from deeprefine_skill.agent_loop import load_trace, validate_trace
+
+    project = find_project_root(Path(args.project_root) if args.project_root else None)
+    paths = graphify_paths(project)
+    text = Path(args.refinement_file).read_text(encoding="utf-8") if args.refinement_file else ""
+    if not text.strip():
+        print("Provide --refinement-file with <refinement>...</refinement> block", file=sys.stderr)
+        return 1
+
+    if not getattr(args, "skip_trace_check", False):
+        if not args.trace_file:
+            print(
+                "Agent loop requires --trace-file (loop_trace_*.json). "
+                "See SKILL.md or run: deeprefine loop validate --trace-file ...",
+                file=sys.stderr,
+            )
+            return 1
+        trace = load_trace(Path(args.trace_file))
+        errs = validate_trace(trace, refinement_text=text)
+        if errs:
+            print("Loop trace validation failed (must match Reafiner.refine()):", file=sys.stderr)
+            for e in errs:
+                print(f"  - {e}", file=sys.stderr)
+            return 1
+
+    backup = paths["graph_backup"]
+    if paths["graph_json"].is_file() and not backup.is_file():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        import shutil
+
+        shutil.copy2(paths["graph_json"], backup)
+    changes = __import__(
+        "deeprefine_skill.agent_graph", fromlist=["apply_refinement_text"]
+    ).apply_refinement_text(paths["graph_json"], text)
+    print(f"Applied {len(changes)} action(s) to {paths['graph_json']}")
+    for c in changes:
+        print(f"  - {c}")
+    return 0
+
+
+def cmd_loop_init(args: argparse.Namespace) -> int:
+    from deeprefine_skill.agent_loop import default_trace, save_trace, trace_path_for_query
+
+    project = find_project_root()
+    paths = graphify_paths(project)
+    trace = default_trace(args.query)
+    out = Path(args.trace_file) if args.trace_file else trace_path_for_query(
+        paths["history"].parent, args.query
+    )
+    save_trace(out, trace)
+    print(f"Loop trace template: {out}")
+    return 0
+
+
+def cmd_loop_validate(args: argparse.Namespace) -> int:
+    from deeprefine_skill.agent_loop import load_trace, validate_trace
+
+    trace_path = Path(args.trace_file)
+    refinement_text = None
+    if args.refinement_file:
+        refinement_text = Path(args.refinement_file).read_text(encoding="utf-8")
+    elif trace_path.is_file():
+        trace = load_trace(trace_path)
+        ref = trace.get("refinement_action_file")
+        if ref and Path(ref).is_file():
+            refinement_text = Path(ref).read_text(encoding="utf-8")
+    errs = validate_trace(load_trace(trace_path), refinement_text=refinement_text)
+    if errs:
+        print("INVALID — does not match Reafiner.refine() control flow:")
+        for e in errs:
+            print(f"  - {e}")
+        return 1
+    print("OK — loop trace matches Reafiner.refine() rules.")
+    return 0
+
+
+def cmd_loop_finish(args: argparse.Namespace) -> int:
+    """Validate trace, append results log, mark history refined (agent loop step 7)."""
+    import json
+    import time
+
+    from deeprefine_skill.agent_loop import (
+        load_trace,
+        reafiner_early_exit,
+        validate_trace,
+    )
+    from deeprefine_skill.history import mark_refined, query_id
+
+    project = find_project_root(Path(args.project_root) if args.project_root else None)
+    paths = graphify_paths(project)
+    trace_path = Path(args.trace_file)
+    trace = load_trace(trace_path)
+    refinement_text = None
+    if args.refinement_file:
+        refinement_text = Path(args.refinement_file).read_text(encoding="utf-8")
+    errs = validate_trace(trace, refinement_text=refinement_text)
+    if errs:
+        print("Cannot finish — trace invalid:", file=sys.stderr)
+        for e in errs:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
+
+    q = trace.get("query", "").strip()
+    qid = trace.get("query_id") or query_id(q)
+    log = paths["history"].parent / f"refinement_results_{time.strftime('%Y%m%d')}.jsonl"
+    entry = {
+        "query": q,
+        "query_id": qid,
+        "interaction_history": trace.get("interaction_history"),
+        "error_abduction_reason": trace.get("error_abduction_reason"),
+        "refinement_action_raw": refinement_text,
+        "early_exit": reafiner_early_exit(trace.get("interaction_history") or []),
+        "mode": "agent-loop",
+        "trace_file": str(trace_path),
+    }
+    with log.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    mark_refined(paths["history"], {qid})
+    print(f"Logged → {log}")
+    print(f"Marked refined: {qid}")
+    return 0
+
+
 def cmd_refine(args: argparse.Namespace) -> int:
     _setup_repo_imports()
     from deeprefine_skill.refine_runner import refine_from_history
@@ -181,6 +306,44 @@ def main(argv: list[str] | None = None) -> int:
     p_refine.add_argument("--project-root", default=None)
     p_refine.add_argument("--rebuild-index", action="store_true")
     p_refine.set_defaults(func=cmd_refine)
+
+    p_apply = sub.add_parser(
+        "apply",
+        help="Apply <refinement> actions (agent loop; requires --trace-file)",
+    )
+    p_apply.add_argument(
+        "--refinement-file",
+        required=True,
+        help="File containing <refinement>insert_edge(...)|...</refinement>",
+    )
+    p_apply.add_argument(
+        "--trace-file",
+        required=False,
+        help="loop_trace_<id>.json — validated against Reafiner.refine() before apply",
+    )
+    p_apply.add_argument(
+        "--skip-trace-check",
+        action="store_true",
+        help="Bypass loop validation (not for /deeprefine agent mode)",
+    )
+    p_apply.add_argument("--project-root", default=None)
+    p_apply.set_defaults(func=cmd_apply)
+
+    p_loop = sub.add_parser("loop", help="Agent Reafiner loop trace (no FAISS)")
+    loop_sub = p_loop.add_subparsers(dest="loop_cmd", required=True)
+    p_li = loop_sub.add_parser("init", help="Create loop_trace_<id>.json template")
+    p_li.add_argument("--query", required=True)
+    p_li.add_argument("--trace-file", default=None)
+    p_li.set_defaults(func=cmd_loop_init)
+    p_lv = loop_sub.add_parser("validate", help="Check trace matches Reafiner control flow")
+    p_lv.add_argument("--trace-file", required=True)
+    p_lv.add_argument("--refinement-file", default=None)
+    p_lv.set_defaults(func=cmd_loop_validate)
+    p_lf = loop_sub.add_parser("finish", help="Validate trace, log results, mark history refined")
+    p_lf.add_argument("--trace-file", required=True)
+    p_lf.add_argument("--refinement-file", default=None)
+    p_lf.add_argument("--project-root", default=None)
+    p_lf.set_defaults(func=cmd_loop_finish)
 
     args = parser.parse_args(argv)
     if hasattr(args, "_default_project"):

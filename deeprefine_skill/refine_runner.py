@@ -86,7 +86,10 @@ def make_clients(cfg: dict[str, str]) -> tuple[LLMGenerator, Qwen3Emb]:
         model_name=cfg["DEEPREFINE_MODEL"],
         default_config=GenerationConfig(chat_template_kwargs={"enable_thinking": False}),
     )
-    encoder = Qwen3Emb(embed_client)
+    encoder = Qwen3Emb(
+        embed_client,
+        model_name=cfg["DEEPREFINE_EMBED_MODEL"],
+    )
     return llm, encoder
 
 
