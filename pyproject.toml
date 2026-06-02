@@ -7,7 +7,8 @@ name = "deeprefine-cli"
 version = "0.1.6"
 description = "CLI and Cursor skill to refine graphify knowledge graphs with DeepRefine"
 readme = "README.md"
-license = "MIT"
+# Use license text (metadata 2.3) — SPDX string + LICENSE file triggers 2.4 and PyPI 400 on upload.
+license = { text = "MIT" }
 requires-python = ">=3.10"
 authors = [
     {name = "HKUST-KnowComp"},
@@ -40,6 +41,10 @@ deeprefine = "deeprefine_skill.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["deeprefine_skill*"]
+
+[tool.setuptools]
+# Avoid PEP 639 license-file / metadata 2.4 (PyPI 400 with older twine formdata).
+license-files = []
 
 [tool.setuptools.package-data]
 deeprefine_skill = ["SKILL.md"]
