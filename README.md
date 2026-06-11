@@ -113,32 +113,6 @@ deeprefine refine
 
 ---
 
-## Agent loop (what `/deeprefine` must do)
-
-Matches `Reafiner.refine()` in [DeepRefine](https://github.com/HKUST-KnowComp/DeepRefine) (`autorefiner/src/reafiner.py`):
-
-```text
-for step in 1..4:
-  [Step: N]
-  hop 1: graphify query "<question>"
-  hop 2+: k-hop expand from prior entities (read graph.json)
-  LLM → <judge>Yes</judge> or <judge>No</judge>
-  stop if Yes
-
-if len(history) <= 1 and Yes:
-  early exit — no graph patch
-else:
-  LLM → <abduction>...</abduction>
-  LLM → <refinement>insert_edge(...)|...</refinement>
-  deeprefine loop validate --trace-file ...
-  deeprefine apply --trace-file ... --refinement-file ...
-  deeprefine loop finish --trace-file ...
-```
-
-Full rules and prompts are in [SKILL.md](./SKILL.md) (installed to `.cursor/skills/deeprefine/SKILL.md`).
-
----
-
 ## Pipeline
 
 ```text
@@ -171,34 +145,6 @@ graphify-out/
     ├── refinement_results_*.jsonl # run logs
     ├── graph.json.bak             # backup before apply/refine
     └── cache/reafiner.pkl         # FAISS cache (CLI mode only)
-```
-
----
-
-## Repository layout
-
-```text
-DeepRefine-Skill/              ← this repo (PyPI: deeprefine-cli)
-├── deeprefine_skill/
-│   ├── SKILL.md               # bundled; copied on cursor install
-│   ├── agent_loop.py          # trace validation (Reafiner rules)
-│   └── ...
-└── SKILL.md
-
-DeepRefine/                    ← separate clone (CLI refine only)
-├── autorefiner/
-└── scripts/vllm_serve/
-
-your-kb-project/
-└── graphify-out/ ...
-```
-
-**Recommended sibling layout** (auto-detects `../DeepRefine` when `DEEPREFINE_REPO` is unset):
-
-```text
-www/code/
-├── DeepRefine/
-└── DeepRefine-Skill/
 ```
 
 ---
@@ -307,19 +253,6 @@ deeprefine cursor install
 | 4 | *(optional)* `graphify query "..."` to verify |
 
 **Terminal-only alternative:** `deeprefine history add` → `deeprefine refine` (requires DeepRefine + API/vLLM).
-
----
-
-## Where to run what
-
-| What | Where |
-|------|-------|
-| `pip install deeprefine-cli` | Any Python env |
-| `pip install -e .../DeepRefine` | `atlastune` (CLI refine) |
-| `graphify` / `deeprefine cursor install` | **KB project root** |
-| `/deeprefine`, `deeprefine loop`, `deeprefine apply` | **KB project root** |
-| `deeprefine refine` | **KB project root** + DeepRefine + inference |
-| vLLM scripts | **DeepRefine repo** |
 
 ---
 
