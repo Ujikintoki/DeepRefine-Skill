@@ -39,6 +39,7 @@ It refines your graphify knowledge graph for better future retrieval and Q&A qua
 
 ## News
 - **[2026/6/15] v0.1.8** - Aligned interaction memory with LLM-Wiki (graphify) and fixed the single query refinement issue.
+- **Unreleased** - Added dry-run-first refinement, evidence-aware action review, ambiguous-node warnings, and LOW-confidence apply guard.
 - **[2026/6/2] v0.1.7** — Cursor skill + `deeprefine refine` with configurable API. And strict DeepRefine agent loop.
 
 ## Agent CLI (Recommended)
@@ -51,6 +52,8 @@ This is the default mode and the main workflow for this project.
 - Follows the same control flow as `Reafiner.refine()`
 - Integrates with graphify query memory automatically
 - Handles pending queries in batch, one by one
+- Generates evidence-aware proposed actions before any graph write
+- Applies graph changes only after explicit user approval
 
 ### One-time setup
 
@@ -83,15 +86,17 @@ When you run `/deeprefine`, it should follow this order:
    - import queries from `graphify-out/memory/query_*.md`
    - write to `graphify-out/.deeprefine/history.jsonl`
 2. load pending queries from `history.jsonl` (`refined != true`)
-3. refine all pending queries sequentially
-4. mark each finished query as refined via `deeprefine loop finish`
+3. refine pending queries sequentially
+4. for refinement-path queries, generate `<refinement>` actions and run `deeprefine review`
+5. stop in dry-run mode and show the review report; do **not** modify `graph.json` yet
+6. only after user approval, run `deeprefine apply` and then `deeprefine loop finish`
 
 
 ### Agent artifacts
 
 ```text
 graphify-out/
-├── graph.json                              # graphify main graph (refined in-place)
+├── graph.json                              # graphify main graph; unchanged until apply approval
 ├── memory/
 │   └── query_*.md                          # graphify query logs (sync source)
 └── .deeprefine/
@@ -99,7 +104,10 @@ graphify-out/
     ├── graph.json.bak                      # backup before first apply in this run
     ├── loop_trace_<query_id>.json          # per-query loop audit trace
     ├── refinement_results_<YYYYMMDD>.jsonl # per-day run log
-    └── refinement_actions_*.txt            # optional; only when refinement path is taken
+    ├── refinement_actions_*.txt            # optional; only when refinement path is taken
+    ├── proposed_refinement_actions_*.txt    # CLI dry-run proposed actions
+    ├── proposed_refinement_review_*.md      # evidence-aware review report
+    └── proposed_refinement_review_*.json    # optional structured review report
 ```
 
 ### Agent-related commands
@@ -114,8 +122,29 @@ Run from your KB project root.
 | `deeprefine history list --pending` | Show unrefined queue |
 | `deeprefine loop init --query "..."` | Create `loop_trace_<id>.json` template |
 | `deeprefine loop validate --trace-file T` | Validate trace against Reafiner control flow |
-| `deeprefine apply --trace-file T --refinement-file F` | Apply `<refinement>` actions to `graph.json` |
+| `deeprefine review --trace-file T --refinement-file F` | Review proposed actions with HIGH/MEDIUM/LOW evidence labels; no graph write |
+| `deeprefine apply --trace-file T --refinement-file F` | Apply `<refinement>` actions to `graph.json` after approval; refuses LOW by default |
+| `deeprefine apply --allow-low-confidence --trace-file T --refinement-file F` | Override LOW-confidence guard explicitly |
 | `deeprefine loop finish --trace-file T [--refinement-file F]` | Persist results and mark history refined |
+
+### Evidence-aware review and safe apply
+
+`/deeprefine` should default to dry-run-first behavior. Proposed actions are reviewed before they can modify `graphify-out/graph.json`. Each action is labeled:
+
+| Label | Meaning |
+|-------|---------|
+| `HIGH` | Direct graph or code evidence exists. |
+| `MEDIUM` | k-hop context supports the action, but direct code or exact-edge evidence is missing. |
+| `LOW` | Node names are ambiguous, too broad, cross-community, or cannot be grounded in `graph.json`. |
+
+Bare function names such as `main()`, `run()`, `train()`, `test()`, and `setup()` are treated as ambiguous. Prefer file-qualified names:
+
+```text
+BAD:  insert_edge("main()", "calls", "Trainer")
+GOOD: insert_edge("pretraining/pretraining_CLIP_fine-grained.py::main()", "calls", "Trainer")
+```
+
+`deeprefine apply` refuses LOW-confidence actions by default. Use `--allow-low-confidence` only when the user explicitly accepts the risk.
 
 ---
 
@@ -157,11 +186,12 @@ cd /path/to/your-kb-project
 # Option A: import from graphify memory first (recommended)
 deeprefine history sync-memory
 deeprefine history list --pending
-deeprefine refine
+deeprefine refine          # dry-run: proposed actions + review, no graph write
+deeprefine refine --apply  # optional: write accepted CLI refine changes
 
 # Option B: add one explicit query
 deeprefine history add --query "your question"
-deeprefine refine
+deeprefine refine          # dry-run by default
 ```
 
 ### Terminal commands
@@ -172,8 +202,9 @@ deeprefine refine
 | `deeprefine history list` | List all history rows |
 | `deeprefine history sync-memory` | Import graphify memory queries into history |
 | `deeprefine history list --pending` | List only unrefined queries |
-| `deeprefine refine` | Refine all pending queries |
-| `deeprefine refine --query "..."` | Refine a single query (also records it) |
+| `deeprefine refine` | Generate proposed actions for all pending queries; dry-run by default |
+| `deeprefine refine --query "..."` | Generate proposed actions for a single query; dry-run by default |
+| `deeprefine refine --apply` | Persist accepted CLI refine changes to `graph.json` |
 | `deeprefine refine --rebuild-index` | Rebuild FAISS before refine |
 | `deeprefine index --rebuild` | Rebuild FAISS cache only |
 
@@ -183,12 +214,12 @@ deeprefine refine
 
 | Method | Command |
 |--------|---------|
-| **PyPI** | `pip install deeprefine-cli==0.1.7` |
+| **PyPI** | `pip install deeprefine-cli==0.1.8` |
 | **Source** | `pip install -e /path/to/DeepRefine-Skill` |
 
 ```bash
 deeprefine --help
-# Expect: cursor, history, index, refine, apply, loop
+# Expect: cursor, history, index, refine, review, apply, loop
 ```
 
 ---

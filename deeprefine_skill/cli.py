@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -117,6 +118,7 @@ def cmd_index(args: argparse.Namespace) -> int:
 def cmd_apply(args: argparse.Namespace) -> int:
     """Apply <refinement> actions (from agent loop) to graph.json."""
     from deeprefine_skill.agent_loop import load_trace, validate_trace
+    from deeprefine_skill.action_review import render_review_markdown, review_refinement_text
 
     project = find_project_root(Path(args.project_root) if args.project_root else None)
     paths = graphify_paths(project)
@@ -141,6 +143,20 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 print(f"  - {e}", file=sys.stderr)
             return 1
 
+    raw = json.loads(paths["graph_json"].read_text(encoding="utf-8"))
+    reviews = review_refinement_text(raw, text, project_root=project)
+    print(render_review_markdown(reviews))
+    low_confidence = [review for review in reviews if review.confidence == "LOW"]
+    if low_confidence and not args.allow_low_confidence:
+        print(
+            "Refusing to apply because LOW-confidence action(s) were detected. "
+            "Review or rewrite the proposed actions, or rerun with --allow-low-confidence to override.",
+            file=sys.stderr,
+        )
+        for review in low_confidence:
+            print(f"  - {review.action}", file=sys.stderr)
+        return 1
+
     backup = paths["graph_backup"]
     if paths["graph_json"].is_file() and not backup.is_file():
         backup.parent.mkdir(parents=True, exist_ok=True)
@@ -153,6 +169,40 @@ def cmd_apply(args: argparse.Namespace) -> int:
     print(f"Applied {len(changes)} action(s) to {paths['graph_json']}")
     for c in changes:
         print(f"  - {c}")
+    return 0
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    """Validate and render evidence-aware proposed refinement actions."""
+    from deeprefine_skill.action_review import write_review_files
+    from deeprefine_skill.agent_loop import load_trace, validate_trace
+
+    project = find_project_root(Path(args.project_root) if args.project_root else None)
+    paths = graphify_paths(project)
+    text = Path(args.refinement_file).read_text(encoding="utf-8")
+
+    if args.trace_file:
+        trace = load_trace(Path(args.trace_file))
+        errs = validate_trace(trace, refinement_text=text)
+        if errs:
+            print("Loop trace validation failed:", file=sys.stderr)
+            for e in errs:
+                print(f"  - {e}", file=sys.stderr)
+            return 1
+
+    report_path = Path(args.output) if args.output else paths["graphify_out"] / ".deeprefine" / "proposed_refinement_review.md"
+    json_path = Path(args.json_output) if args.json_output else None
+    reviews, markdown = write_review_files(
+        graph_path=paths["graph_json"],
+        refinement_text=text,
+        report_path=report_path,
+        json_path=json_path,
+    )
+    print(markdown)
+    print(f"Review saved: {report_path}")
+    if json_path:
+        print(f"Review JSON saved: {json_path}")
+    print(f"No graph changes applied. Proposed actions: {len(reviews)}")
     return 0
 
 
@@ -261,11 +311,22 @@ def cmd_refine(args: argparse.Namespace) -> int:
         cfg,
         query=args.query,
         rebuild_index=args.rebuild_index,
+        apply=args.apply,
     )
     print("\n--- DeepRefine summary ---")
+    print(f"Mode: {result['mode']}")
     print(f"Queries processed: {result['queries_processed']}")
     print(f"Graph: {result['graph_path']} ({result['nodes']} nodes, {result['edges']} edges)")
     print(f"Log: {result['log_path']}")
+    if result["mode"] == "dry-run":
+        print("No graph changes applied. Review proposed actions, then run deeprefine apply if approved.")
+    for row in result.get("summary", []):
+        if row.get("action_file") or row.get("review_file"):
+            print(f"Proposal [{row['id']}]:")
+            if row.get("action_file"):
+                print(f"  actions: {row['action_file']}")
+            if row.get("review_file"):
+                print(f"  review: {row['review_file']}")
     return 0
 
 
@@ -348,7 +409,23 @@ def main(argv: list[str] | None = None) -> int:
     p_refine.add_argument("--query", default=None, help="Single query (also recorded)")
     p_refine.add_argument("--project-root", default=None)
     p_refine.add_argument("--rebuild-index", action="store_true")
+    p_refine.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write accepted CLI refine changes to graph.json. Default is dry-run proposal only.",
+    )
     p_refine.set_defaults(func=cmd_refine)
+
+    p_review = sub.add_parser(
+        "review",
+        help="Validate and show proposed <refinement> actions without changing graph.json",
+    )
+    p_review.add_argument("--refinement-file", required=True)
+    p_review.add_argument("--trace-file", required=False)
+    p_review.add_argument("--output", default=None, help="Markdown report path")
+    p_review.add_argument("--json-output", default=None, help="Optional JSON report path")
+    p_review.add_argument("--project-root", default=None)
+    p_review.set_defaults(func=cmd_review)
 
     p_apply = sub.add_parser(
         "apply",
@@ -368,6 +445,11 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-trace-check",
         action="store_true",
         help="Bypass loop validation (not for /deeprefine agent mode)",
+    )
+    p_apply.add_argument(
+        "--allow-low-confidence",
+        action="store_true",
+        help="Apply even when the review contains LOW-confidence actions.",
     )
     p_apply.add_argument("--project-root", default=None)
     p_apply.set_defaults(func=cmd_apply)
