@@ -38,8 +38,8 @@ It refines your graphify knowledge graph for better future retrieval and Q&A qua
 ---
 
 ## News
+- **[2026/6/17] unreleased** - Added dry-run-first refinement, evidence-aware action review, ambiguous-node warnings, and LOW-confidence apply guard.
 - **[2026/6/15] v0.1.8** - Aligned interaction memory with LLM-Wiki (graphify) and fixed the single query refinement issue.
-- **Unreleased** - Added dry-run-first refinement, evidence-aware action review, ambiguous-node warnings, and LOW-confidence apply guard.
 - **[2026/6/2] v0.1.7** — Cursor skill + `deeprefine refine` with configurable API. And strict DeepRefine agent loop.
 
 ## Agent CLI (Recommended)
