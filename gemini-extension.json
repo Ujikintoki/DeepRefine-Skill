@@ -1,0 +1,9 @@
+{
+  "name": "deeprefine-skill",
+  "version": "1.0.0",
+  "description": "DeepRefine workflow for refining Graphify / LLM-Wiki knowledge graphs inside Gemini CLI.",
+  "contextFileName": "GEMINI.md",
+  "plan": {
+    "directory": ".deeprefine/plans"
+  }
+}

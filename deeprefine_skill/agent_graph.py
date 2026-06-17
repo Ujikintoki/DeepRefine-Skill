@@ -13,9 +13,32 @@ def _norm_label(s: str) -> str:
     return unicodedata.normalize("NFKC", s.strip()).casefold()
 
 
+def _split_qualified_label(label: str) -> tuple[str | None, str]:
+    if "::" not in label:
+        return None, label
+    src, name = label.rsplit("::", 1)
+    return src.strip() or None, name.strip()
+
+
+def _same_source(node_src: str | None, query_src: str | None) -> bool:
+    if not node_src or not query_src:
+        return False
+    node_src = node_src.replace("\\", "/").strip()
+    query_src = query_src.replace("\\", "/").strip()
+    return (
+        node_src == query_src
+        or node_src.endswith("/" + query_src)
+        or query_src.endswith("/" + node_src)
+    )
+
+
 def _find_node_id_by_label(nodes: list[dict[str, Any]], label: str) -> str | None:
-    target = _norm_label(label)
+    query_src, query_label = _split_qualified_label(label)
+    target = _norm_label(query_label)
     for n in nodes:
+        node_src = n.get("source_file") or n.get("file_id") or n.get("source_url")
+        if query_src and not _same_source(str(node_src) if node_src else None, query_src):
+            continue
         if _norm_label(n.get("label", "")) == target:
             return n["id"]
         for alias in n.get("aliases") or []:

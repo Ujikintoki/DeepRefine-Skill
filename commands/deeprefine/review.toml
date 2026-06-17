@@ -1,0 +1,23 @@
+description = "Review DeepRefine graph evidence for one query without applying graph changes."
+
+prompt = '''
+Activate the `deeprefine` skill in REVIEW mode only.
+
+Review query:
+{{args}}
+
+Workspace snapshot:
+```text
+!{pwd; echo "--- graphify artifacts ---"; find graphify-out -maxdepth 3 \( -name "graph.json" -o -name "query_*.md" -o -name "history.jsonl" -o -name "loop_trace_*.json" -o -name "refinement_actions_*.txt" -o -name "proposed_refinement_review.md" \) 2>/dev/null | head -100; echo "--- pending queries ---"; deeprefine history list --pending 2>&1}
+```
+
+Requirements:
+
+1. Do not modify files unless the user explicitly asks to save a review artifact.
+2. Do not call `deeprefine apply`.
+3. Do not run terminal-only `deeprefine refine` unless the user explicitly asks for CLI / FAISS mode.
+4. Inspect whether the current Graphify / LLM-Wiki artifacts contain enough evidence to answer the review query.
+5. Diagnose graph defects as missing node, missing edge, weak evidence, incorrect relation, redundant evidence, ambiguous entity, stale graph artifact, or no defect found.
+6. If a refinement action file exists and the user asks to review it, use `deeprefine review --refinement-file <file> [--trace-file <trace>]`.
+7. Return a structured review report with: query, evidence found, missing/weak evidence, recommended refinement actions, and next commands.
+'''
