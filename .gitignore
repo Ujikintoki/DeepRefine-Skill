@@ -8,3 +8,5 @@ build/
 *.pkl
 .DS_Store
 
+# Personal working documents — kept locally, not distributed
+docs/tmp/
