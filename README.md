@@ -148,6 +148,75 @@ GOOD: insert_edge("pretraining/pretraining_CLIP_fine-grained.py::main()", "calls
 
 ---
 
+## Gemini CLI Integration
+
+DeepRefine can also be used as a Gemini CLI extension. This keeps the same safe,
+dry-run-first DeepRefine workflow while making `/deeprefine` available inside
+Gemini CLI.
+
+### One-time setup for local development
+
+```bash
+cd /path/to/DeepRefine-Skill
+pip install -e .
+deeprefine gemini link
+```
+
+`deeprefine gemini link` calls Gemini CLI's official extension manager:
+
+```bash
+gemini extensions link /path/to/DeepRefine-Skill
+```
+
+Restart Gemini CLI after linking. Then check:
+
+```text
+/extensions list
+/commands list
+```
+
+Expected commands:
+
+```text
+/deeprefine
+/deeprefine:review
+/deeprefine:apply
+```
+
+### Gemini CLI commands
+
+| Command | Description |
+|---------|-------------|
+| `deeprefine gemini path` | Print the extension root used for Gemini CLI |
+| `deeprefine gemini link` | Link the current source checkout with `gemini extensions link` |
+| `deeprefine gemini install` | Install the bundled extension with `gemini extensions install` |
+| `deeprefine gemini install --copy-only` | Manual fallback copy to `~/.gemini/extensions/deeprefine-skill` |
+| `deeprefine gemini uninstall` | Remove the extension with Gemini CLI's manager |
+
+For normal source development, prefer `deeprefine gemini link`. It makes the
+extension visible to `/extensions list`, whereas copying files alone may not
+register the extension in newer Gemini CLI versions.
+
+### Gemini CLI session
+
+```bash
+gemini
+```
+
+Then run:
+
+```text
+/deeprefine
+/deeprefine:review "Why is the graph missing the data loading path?"
+/deeprefine:apply "Apply the approved refinement actions from the valid trace."
+```
+
+The extension files are located at the repository root and are also bundled under
+`deeprefine_skill/gemini_extension/` for wheel installs. See
+[`docs/gemini-cli.md`](docs/gemini-cli.md) for details.
+
+---
+
 ## Terminal CLI (FAISS + API/vLLM)
 
 Use this section when you want a pure terminal workflow without Cursor `/deeprefine`.
@@ -219,7 +288,7 @@ deeprefine refine          # dry-run by default
 
 ```bash
 deeprefine --help
-# Expect: cursor, history, index, refine, review, apply, loop
+# Expect: cursor, gemini, history, index, refine, review, apply, loop
 ```
 
 ---

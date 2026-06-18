@@ -1,0 +1,24 @@
+description = "Apply DeepRefine refinement actions from a valid trace when explicitly requested."
+
+prompt = '''
+Activate the `deeprefine` skill in APPLY mode.
+
+Apply request:
+{{args}}
+
+DeepRefine artifact snapshot:
+```text
+!{pwd; echo "--- DeepRefine artifacts ---"; find graphify-out/.deeprefine -maxdepth 2 \( -name "loop_trace_*.json" -o -name "refinement_actions_*.txt" -o -name "history.jsonl" -o -name "refinement_results_*.jsonl" -o -name "proposed_refinement_review.md" \) 2>/dev/null | sort | tail -100}
+```
+
+Requirements:
+
+1. Only apply changes if the user explicitly requested application.
+2. Require a valid `loop_trace_<query_id>.json` and a refinement action file containing `<refinement>...</refinement>`.
+3. Validate before applying by running `deeprefine loop validate --trace-file <trace> --refinement-file <file>`.
+4. Review before applying by running `deeprefine review --trace-file <trace> --refinement-file <file>` when possible.
+5. Apply only through `deeprefine apply --trace-file <trace> --refinement-file <file>`.
+6. Do not hand-edit `graphify-out/graph.json`.
+7. After applying, finish with `deeprefine loop finish --trace-file <trace> --refinement-file <file>`.
+8. Report every modified artifact and summarize the applied refinement actions.
+'''

@@ -13,7 +13,15 @@ from deeprefine_skill.history import (
     pending_queries,
     sync_history_from_memory,
 )
-from deeprefine_skill.installers import install_cursor_skill, uninstall_cursor_skill
+from deeprefine_skill.installers import (
+    copy_gemini_extension,
+    gemini_extension_path,
+    install_cursor_skill,
+    install_gemini_extension,
+    link_gemini_extension,
+    uninstall_cursor_skill,
+    uninstall_gemini_extension,
+)
 from deeprefine_skill.paths import (
     env_defaults,
     find_deeprefine_repo,
@@ -49,6 +57,61 @@ def cmd_cursor_uninstall(args: argparse.Namespace) -> int:
 def cmd_install(args: argparse.Namespace) -> int:
     """Alias for `deeprefine cursor install` (graphify-compatible naming)."""
     return cmd_cursor_install(args)
+
+
+def cmd_gemini_path(args: argparse.Namespace) -> int:
+    src = gemini_extension_path(prefer_repo=not args.bundled)
+    print(src)
+    return 0
+
+
+def cmd_gemini_link(args: argparse.Namespace) -> int:
+    source = Path(args.source) if args.source else None
+    try:
+        src = link_gemini_extension(source)
+    except Exception as exc:
+        print(f"Failed to link Gemini CLI extension: {exc}", file=sys.stderr)
+        return 1
+    print(f"Linked DeepRefine Gemini CLI extension from → {src}")
+    print("Restart Gemini CLI, then run: /extensions list")
+    print("Expected commands: /deeprefine, /deeprefine:review, /deeprefine:apply")
+    return 0
+
+
+def cmd_gemini_install(args: argparse.Namespace) -> int:
+    source = Path(args.source) if args.source else None
+    if args.copy_only:
+        target = Path(args.target_dir) if args.target_dir else None
+        dest = copy_gemini_extension(target)
+        print(f"Copied DeepRefine Gemini CLI extension → {dest}")
+        print("Restart Gemini CLI. If /extensions list still does not show it, use: deeprefine gemini link")
+        return 0
+    try:
+        src = install_gemini_extension(source, consent=not args.no_consent)
+    except Exception as exc:
+        print(f"Failed to install Gemini CLI extension with Gemini manager: {exc}", file=sys.stderr)
+        print("Fallback options:", file=sys.stderr)
+        print("  deeprefine gemini link", file=sys.stderr)
+        print("  deeprefine gemini install --copy-only", file=sys.stderr)
+        return 1
+    print(f"Installed DeepRefine Gemini CLI extension from → {src}")
+    print("Restart Gemini CLI, then run: /extensions list")
+    print("Expected commands: /deeprefine, /deeprefine:review, /deeprefine:apply")
+    return 0
+
+
+def cmd_gemini_uninstall(args: argparse.Namespace) -> int:
+    target = Path(args.target_dir) if args.target_dir else None
+    try:
+        removed = uninstall_gemini_extension(copy_only=args.copy_only, target_dir=target)
+    except Exception as exc:
+        print(f"Failed to uninstall Gemini CLI extension: {exc}", file=sys.stderr)
+        return 1
+    if removed:
+        print("Removed DeepRefine Gemini CLI extension.")
+    else:
+        print("Gemini CLI extension not found at the selected location.")
+    return 0
 
 
 def cmd_history_add(args: argparse.Namespace) -> int:
@@ -372,6 +435,63 @@ def main(argv: list[str] | None = None) -> int:
     p_cu = cursor_sub.add_parser("uninstall", help="Remove Cursor skill")
     _add_project_flag(p_cu)
     p_cu.set_defaults(func=cmd_cursor_uninstall, _default_project=True)
+
+
+    # deeprefine gemini link | install | uninstall | path
+    p_gemini = sub.add_parser("gemini", help="Gemini CLI integration")
+    gemini_sub = p_gemini.add_subparsers(dest="gemini_cmd", required=True)
+
+    p_gp = gemini_sub.add_parser("path", help="Print the Gemini extension source path")
+    p_gp.add_argument(
+        "--bundled",
+        action="store_true",
+        help="Print the bundled package template instead of preferring the repo root",
+    )
+    p_gp.set_defaults(func=cmd_gemini_path)
+
+    p_gl = gemini_sub.add_parser("link", help="Link this extension with Gemini CLI's official manager")
+    p_gl.add_argument(
+        "--source",
+        default=None,
+        help="Extension root to link (default: repo root when available, otherwise bundled template)",
+    )
+    p_gl.set_defaults(func=cmd_gemini_link)
+
+    p_gi = gemini_sub.add_parser("install", help="Install this extension with Gemini CLI's official manager")
+    p_gi.add_argument(
+        "--source",
+        default=None,
+        help="Extension root to install (default: bundled template)",
+    )
+    p_gi.add_argument(
+        "--no-consent",
+        action="store_true",
+        help="Do not pass --consent to `gemini extensions install`",
+    )
+    p_gi.add_argument(
+        "--copy-only",
+        action="store_true",
+        help="Manual fallback: copy files to ~/.gemini/extensions without Gemini manager",
+    )
+    p_gi.add_argument(
+        "--target-dir",
+        default=None,
+        help="Copy-only destination (default: ~/.gemini/extensions/deeprefine-skill)",
+    )
+    p_gi.set_defaults(func=cmd_gemini_install)
+
+    p_gu = gemini_sub.add_parser("uninstall", help="Uninstall the Gemini CLI extension")
+    p_gu.add_argument(
+        "--copy-only",
+        action="store_true",
+        help="Remove manual copy instead of calling Gemini manager",
+    )
+    p_gu.add_argument(
+        "--target-dir",
+        default=None,
+        help="Copy-only destination (default: ~/.gemini/extensions/deeprefine-skill)",
+    )
+    p_gu.set_defaults(func=cmd_gemini_uninstall)
 
     # deeprefine install (alias)
     p_install = sub.add_parser(
