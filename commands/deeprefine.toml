@@ -1,0 +1,24 @@
+description = "Run DeepRefine's agent-native pending-query workflow for Graphify / LLM-Wiki."
+
+prompt = '''
+Activate the `deeprefine` skill and run the DeepRefine agent-native workflow for the current workspace.
+
+User-supplied query or instruction, if any:
+{{args}}
+
+Workspace and queue snapshot:
+```text
+!{pwd; echo "--- graphify artifacts ---"; find graphify-out -maxdepth 3 \( -name "graph.json" -o -name "query_*.md" -o -name "history.jsonl" -o -name "loop_trace_*.json" -o -name "refinement_results_*.jsonl" -o -name "proposed_refinement_review.md" \) 2>/dev/null | head -100; echo "--- sync graphify memory ---"; deeprefine history sync-memory 2>&1; echo "--- pending queries ---"; deeprefine history list --pending 2>&1}
+```
+
+Required behavior:
+
+1. If `deeprefine` is not installed, tell the user to run `pip install -e /path/to/DeepRefine-Skill` or `pip install deeprefine-cli`.
+2. If `graphify-out/graph.json` is missing, stop and tell the user to run `/graphify .` and `/graphify ./ --wiki` first.
+3. If `{{args}}` is a non-empty query, ensure it is represented in DeepRefine history before refinement. Use `deeprefine history add --query "..."` only when it is not already present.
+4. Process all pending queries sequentially.
+5. For each query, follow the strict Reafiner-style loop from the `deeprefine` skill: graphify query, judge, k-hop expansion if needed, abduction when interaction history has more than one step, refinement generation, review, trace validation, optional apply, finish.
+6. Do not run `deeprefine refine` unless the user explicitly asks for CLI / FAISS mode.
+7. Do not hand-edit `graphify-out/graph.json`.
+8. Report processed queries, generated artifacts, reviews, and whether graph updates were applied.
+'''

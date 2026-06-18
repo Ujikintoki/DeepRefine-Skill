@@ -17,6 +17,7 @@ from .adapter_graphify import (
     save_graphify_json,
     sync_kg_to_graphify,
 )
+from .action_review import write_review_files
 from .history import append_history, mark_refined, query_id
 
 
@@ -105,6 +106,7 @@ def run_refine(
     rebuild_index: bool = False,
     base_top_k: int = 5,
     max_hops: int = 4,
+    apply: bool = False,
 ) -> dict[str, Any]:
     if not graph_path.is_file():
         raise FileNotFoundError(f"graphify graph not found: {graph_path}")
@@ -113,6 +115,7 @@ def run_refine(
     raw, data = load_or_build_data(
         graph_path, cache_pkl, encoder, rebuild=rebuild_index
     )
+    original_kg = data["KG"].copy()
 
     reafiner = Reafiner(
         data=data,
@@ -134,6 +137,8 @@ def run_refine(
 
     def _persist() -> None:
         if completed == 0:
+            return
+        if not apply:
             return
         data["KG"] = reafiner.kg
         nonlocal raw
@@ -166,12 +171,38 @@ def run_refine(
                         "action_count": rr.get("refinement_action_count", 0),
                     }
                 )
-                refined_ids.add(qid)
+                if apply:
+                    refined_ids.add(qid)
                 completed += 1
+                action_file = None
+                review_file = None
+                review_count = 0
+                if rr.get("refinement_action_raw"):
+                    action_file = log_dir / f"proposed_refinement_actions_{qid}.txt"
+                    review_file = log_dir / f"proposed_refinement_review_{qid}.md"
+                    action_file.write_text(rr["refinement_action_raw"], encoding="utf-8")
+                    reviews, _ = write_review_files(
+                        graph_path=graph_path,
+                        refinement_text=rr["refinement_action_raw"],
+                        report_path=review_file,
+                        json_path=log_dir / f"proposed_refinement_review_{qid}.json",
+                    )
+                    review_count = len(reviews)
+                    summary_rows[-1]["action_file"] = str(action_file)
+                    summary_rows[-1]["review_file"] = str(review_file)
+                    summary_rows[-1]["mode"] = "apply" if apply else "dry-run"
                 print(
                     f"  steps={n_steps}, nodes={reafiner.kg.number_of_nodes()}, "
                     f"edges={reafiner.kg.number_of_edges()}"
                 )
+                if action_file and review_file:
+                    print(
+                        f"  proposed_actions={review_count}, action_file={action_file}, "
+                        f"review={review_file}"
+                    )
+                if not apply:
+                    data["KG"] = original_kg.copy()
+                    reafiner.kg = data["KG"]
     finally:
         _persist()
 
@@ -181,6 +212,7 @@ def run_refine(
         "nodes": reafiner.kg.number_of_nodes(),
         "edges": reafiner.kg.number_of_edges(),
         "queries_processed": len(queries),
+        "mode": "apply" if apply else "dry-run",
         "summary": summary_rows,
     }
 
@@ -191,6 +223,7 @@ def refine_from_history(
     *,
     query: str | None = None,
     rebuild_index: bool = False,
+    apply: bool = False,
 ) -> dict[str, Any]:
     if query:
         entry = append_history(paths["history"], query, source="deeprefine")
@@ -215,4 +248,5 @@ def refine_from_history(
         cfg=cfg,
         queries=queries,
         rebuild_index=rebuild_index,
+        apply=apply,
     )
