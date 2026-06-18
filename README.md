@@ -40,7 +40,6 @@ Supported agent frameworks:
   <a href="https://github.com/google-gemini/gemini-cli" title="Gemini CLI"><img src="./assets/gemini-cli-icon_full-color@4x.png" alt="Gemini CLI" height="40"/></a>&nbsp;&nbsp;
   <a href="https://docs.github.com/en/copilot" title="GitHub Copilot CLI" style="text-decoration: none; color: inherit;">
   <img src="https://cdn.simpleicons.org/githubcopilot/000000" height="40" style="vertical-align: middle;" alt="Copilot Icon" />
-  <strong>GitHub Copilot CLI</strong>
 </a>
 </p>
 
