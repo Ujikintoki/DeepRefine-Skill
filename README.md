@@ -10,8 +10,8 @@
 <td align="left" style="vertical-align: middle; padding: 10px 0 10px 30px; border: none;">
   <pre style="font-family: 'Courier New', monospace; font-size: 16px; color: #0EA5E9; margin: 0; padding: 0; text-shadow: 0 0 10px #0EA5E9, 0 0 20px rgba(14,165,233,0.5); line-height: 1.2; transform: skew(-1deg, 0deg); display: block;">██████╗ ███████╗███████╗██████╗ ██████╗ ███████╗███████╗██╗███╗   ██╗███████╗
 ██╔══██╗██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝██╔════╝██║████╗  ██║██╔════╝
-██║  ██║█████╗  █████╗  ██████╔╝██████╔╝█████╗  █████╗  ██║██╔██╗ ██║█████╗  
-██║  ██║██╔══╝  ██╔══╝  ██╔═══╝ ██╔══██╗██╔══╝  ██╔══╝  ██║██║╚██╗██║██╔══╝  
+██║  ██║█████╗  █████╗  ██████╔╝██████╔╝█████╗  █████╗  ██║██╔██╗ ██║█████╗
+██║  ██║██╔══╝  ██╔══╝  ██╔═══╝ ██╔══██╗██╔══╝  ██╔══╝  ██║██║╚██╗██║██╔══╝
 ██████╔╝███████╗███████╗██║     ██║  ██║███████╗██║     ██║██║ ╚████║███████╗
 ╚═════╝ ╚══════╝╚══════╝╚═╝     ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚══════╝</pre>
 </td>
@@ -38,7 +38,10 @@ Supported agent frameworks:
 <p>
   <a href="https://cursor.com" title="Cursor"><img src="./assets/cursor_CUBE_25D.png" alt="Cursor" height="40"/></a>&nbsp;&nbsp;
   <a href="https://github.com/google-gemini/gemini-cli" title="Gemini CLI"><img src="./assets/gemini-cli-icon_full-color@4x.png" alt="Gemini CLI" height="40"/></a>&nbsp;&nbsp;
-  <a href="https://docs.github.com/en/copilot" title="GitHub Copilot CLI"><strong>GitHub Copilot CLI</strong></a>
+  <a href="https://docs.github.com/en/copilot" title="GitHub Copilot CLI" style="text-decoration: none; color: inherit;">
+  <img src="https://cdn.simpleicons.org/githubcopilot/000000" height="40" style="vertical-align: middle;" alt="Copilot Icon" />
+  <strong>GitHub Copilot CLI</strong>
+</a>
 </p>
 
 ---
