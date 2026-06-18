@@ -1,0 +1,473 @@
+# DeepRefine-Skill: Cross-Platform Agent Skill Project Plan
+
+---
+
+## 1. Project Scope
+
+| Dimension | Description |
+|-----------|-------------|
+| **Primary Objective** | Port DeepRefine skill from Cursor to GitHub Copilot CLI; harden the agent harness with progressive engineering |
+| **Secondary Objective** | Port to Claude Code as a cross-platform comparison target (after Copilot delivery) |
+| **Core Deliverable** | A cross-platform agent skill system with unified YAML spec, template-based multi-target emission, and a progressively hardened runtime harness |
+| **Original Repository** | [DeepRefine-Skill](https://github.com/HKUST-KnowComp/DeepRefine) |
+| **Reference Paper** | [DeepRefine (arXiv:2605.10488)](https://arxiv.org/pdf/2605.10488) |
+
+### Priority & Dependency
+
+| Priority | Track | Description | Depends On |
+|----------|-------|-------------|------------|
+| **P0** | Copilot CLI Adaptation | Primary deliverable: make `/deeprefine` work on Copilot CLI | Phase 1–2 |
+| **P0** | Harness Engineering | Progressive hardening from post-hoc validation to inline enforcement | Phase 1 audit |
+| **P1** | Claude Code Adaptation | Learning track + cross-platform comparison data source | Phase 3 Copilot done; may reference classmate's implementation |
+
+> **Decision rationale**: Copilot CLI is the assigned task. Claude Code adaptation is deferred until after Copilot delivery — by that point, classmates' Claude Code work may be available for reference, and the harness will already be mature enough to reuse.
+
+---
+
+## 2. Technical Architecture
+
+### 2.1 Core Insight: Skill and Harness Are Parallel Artefacts
+
+The current SKILL.md describes the Reafiner protocol in natural language for the LLM to follow. The harness enforces the same protocol in code at runtime. They are **not** in a transformation relationship — they are two projections of the same specification, targeting two different executors:
+
+```
+                    ┌──────────────────────────┐
+                    │   Reafiner Specification   │
+                    │   (single source of truth) │
+                    │                            │
+                    │  • State machine (8 steps) │
+                    │  • Prompt templates        │
+                    │  • Validation rules        │
+                    │  • Tool contracts          │
+                    └──────────┬─────────────────┘
+                               │
+              ┌────────────────┴────────────────┐
+              ▼                                 ▼
+   ┌──────────────────┐              ┌──────────────────┐
+   │  Skill Artefact   │              │  Harness Artefact │
+   │  (for the LLM)    │              │  (for the runtime)│
+   │                   │              │                   │
+   │  • Natural lang   │              │  • State machine   │
+   │    instructions    │              │    enforcement     │
+   │  • Prompt templates│              │  • Output valid.   │
+   │  • Step-by-step    │              │  • k-hop expansion │
+   │    guidance        │              │  • Action whitelist│
+   └────────┬───────────┘              └────────┬──────────┘
+            │                                   │
+            ▼                                   ▼
+   ┌──────────────────┐              ┌──────────────────┐
+   │  Agent Framework  │              │  Python Runtime   │
+   │  (Copilot / Claude)│◄────────────│  (framework-      │
+   │                   │  enforces   │   agnostic)       │
+   │  Executes steps   │              │  Validates each   │
+   │  Calls tools      │              │  step inline      │
+   └──────────────────┘              └──────────────────┘
+```
+
+### 2.2 Template-Based Emitter Architecture
+
+Only 2 target platforms (Copilot CLI, Claude Code), both emitting Markdown instruction files. A full compiler with IR layer is over-engineering for N=2. Instead, a YAML spec drives Jinja2 templates directly — Spec → Template → Target.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                Reafiner Skill Specification (YAML)            │
+│  ┌──────────┐ ┌──────────────┐ ┌────────────┐ ┌─────────┐  │
+│  │ State    │ │ Prompt       │ │ Validation │ │ Tool    │  │
+│  │ Machine  │ │ Templates    │ │ Rules      │ │Contracts│  │
+│  │ (8 steps)│ │ (judgement,  │ │ (structural│ │(exec,   │  │
+│  │          │ │  abduction,  │ │ + semantic)│ │ read,   │  │
+│  │          │ │  refinement) │ │            │ │ write,  │  │
+│  │          │ │              │ │            │ │ llm)    │  │
+│  └──────────┘ └──────────────┘ └────────────┘ └─────────┘  │
+└──────────────┬──────────────────────────┬────────────────────┘
+               │                          │
+               ▼                          ▼
+     ┌─────────────────┐       ┌─────────────────────────┐
+     │  Jinja2 Template │       │  Harness Config         │
+     │  copilot-        │       │  (FSM guards, output    │
+     │  instructions    │       │   gates, k-hop params)  │
+     │  .md.j2          │       │   → deeprefine_skill/   │
+     └────────┬────────┘       └─────────────────────────┘
+              │
+              ▼
+     ┌─────────────────┐
+     │ .github/copilot- │
+     │ instructions.md  │
+     │ (P0 — primary)   │
+     └─────────────────┘
+
+     ┌─────────────────┐
+     │  Jinja2 Template │
+     │  claude-skill    │
+     │  .md.j2          │
+     └────────┬────────┘
+              ▼
+     ┌─────────────────┐
+     │ .claude/skills/  │
+     │ deeprefine/      │
+     │ SKILL.md         │
+     │ (P1 — secondary) │
+     └─────────────────┘
+
+The same YAML spec also initializes harness configuration — FSM transition tables,
+output gate regexes, and k-hop parameters — ensuring the runtime enforcement layer
+stays consistent with the instruction files.
+```
+
+**Why not a full compiler (Spec → IR → Target)?** With only 2 targets that are both
+Markdown, an IR adds abstraction overhead without payoff. A Jinja2 template is ~80
+lines of Markdown with `{{ spec.state_machine }}`-style placeholders. Adding a new
+platform means writing one template file, not a new IR→Target emitter. The spec
+remains the single source of truth — change a rule in one place, regenerate all
+targets.
+
+---
+
+## 3. Phased Implementation Plan
+
+### Phase 1: Audit & Baseline (Week 1–3, ~25h)
+
+**Objective**: Understand every line of the current codebase; quantify gaps relative to the DeepRefine paper; identify harness insertion points.
+
+#### 1.1 Environment Setup (4h)
+- [ ] Clone the DeepRefine paper repository; understand core logic in `autorefiner/src/reafiner.py`
+- [ ] Read the DeepRefine paper (at minimum the Reafiner algorithm section)
+- [ ] Run the full graphify → DeepRefine-Skill pipeline locally
+- [ ] Understand project data flow: `graph.json` structure, `loop_trace_*.json` schema, `history.jsonl` format
+
+#### 1.2 Code Audit (8h)
+- [ ] Produce a module dependency graph
+- [ ] Assess test coverage per module (current: ~0%)
+- [ ] Identify all bare `print()` → candidate for structured logging
+- [ ] Identify all bare `except` → candidate for specific exception handling
+- [ ] Document hardcoded paths and assumptions (e.g., `graphify-out/`, `../DeepRefine`)
+- [ ] Review prompt consistency between SKILL.md and `agent_prompts.py`
+- [ ] **Harness-specific**: map every check in `validate_trace()` to its corresponding insertion point in the 8-step control flow; classify each as "can be inline" vs "must be post-hoc"
+
+#### 1.3 Baseline Measurement (13h)
+- [ ] Prepare 20 test queries covering three scenarios: single-hop answerable, multi-hop answerable, unanswerable
+- [ ] Execute `/deeprefine` in Cursor for each query; capture full traces
+- [ ] Compare traces step-by-step against the paper's Reafiner reference
+- [ ] Produce baseline report: per-step compliance rate, common drift types
+- [ ] **Harness-specific**: for each drift instance, record whether a harness mechanism (A/B/C) could have prevented it
+
+**Deliverables**:
+- `docs/phase1-audit.md` — code audit report, including harness insertion point map
+- `docs/phase1-baseline.csv` — 20 queries × per-step compliance data + harness preventability annotation
+- `tests/fixtures/` — test graph.json and query set
+
+---
+
+### Phase 2: Harness Engineering & Core Hardening (Week 4–7, ~51h)
+
+**Objective**: Progressively harden the agent loop from post-hoc validation to inline enforcement. This is the core technical contribution.
+
+#### 2.1 Harness Level 0: Post-hoc Validation (baseline — already exists) (2h)
+
+The starting point. `validate_trace()` in `agent_loop.py` already does this. Document it as Level 0.
+
+- [ ] Formalize the current `validate_trace()` as `HarnessLevel0`
+- [ ] Write unit tests for all validation rules (~20 cases from 1.3 baseline)
+- [ ] Measure: false-positive rate, false-negative rate on baseline traces
+
+**What it does**: Runs after the full loop. Catches errors but cannot prevent them.
+**Limitation**: A failed trace means re-running the entire loop — wasted LLM calls.
+
+#### 2.2 Harness Level 1: Structured Output Enforcement (12h)
+
+Move from post-hoc regex matching to real-time output gate.
+
+- [ ] Implement `OutputGate` class:
+  ```python
+  class OutputGate:
+      def check_judge(self, raw: str) -> tuple[bool, str | None]:
+          """Returns (passed, error_message). Retry on failure."""
+      def check_abduction(self, raw: str) -> tuple[bool, str | None]: ...
+      def check_refinement(self, raw: str) -> tuple[bool, str | None]: ...
+  ```
+- [ ] Integrate into agent loop: after each LLM call, gate checks output before proceeding
+  - `<judge>` must match `JUDGE_RE` → if not, retry with same prompt + format reminder
+  - `<abduction>` must contain all three perspectives (incompleteness, incorrectness, redundancy)
+  - `<refinement>` must pass action whitelist (`insert_edge` / `delete_edge` / `replace_node` only)
+- [ ] Implement retry policy: max 3 retries per step, exponential backoff on format errors
+- [ ] Unit tests: each gate with valid + invalid inputs (~15 cases)
+- [ ] Compare against Level 0 baseline: retry success rate, tokens saved vs full re-run
+
+**Key design decision**: Level 1 only checks *format*, not *semantic correctness*. Semantic validation comes at Level 3.
+
+#### 2.3 Harness Level 2: Deterministic k-hop Expansion (8h)
+
+Remove LLM discretion from entity expansion. k-hop should be a deterministic graph operation.
+
+- [ ] Implement `KHopExpander` in `agent_loop.py`:
+  ```python
+  class KHopExpander:
+      def __init__(self, graph: dict):
+          self.adj = self._build_adjacency(graph)
+      
+      def expand(self, entities: list[str], hop: int = 1) -> list[dict]:
+          """BFS from entities, return triples within `hop` distance."""
+  ```
+- [ ] For step ≥ 2: extract entities from previous step's triples → `expander.expand(entities)` → return triples
+- [ ] No longer prompt the LLM to "decide which entities to expand from"
+- [ ] Unit tests: known graph → verify expansion output (~10 cases)
+- [ ] Integration test: run 10 queries, verify every step ≥ 2 uses k-hop (trace `retrieval.method`)
+
+**Key design decision**: The LLM still does judgement on the expanded triples. We're only removing its discretion over *which entities to retrieve*.
+
+#### 2.4 Harness Level 3: State Machine Enforcement (15h)
+
+The highest level: hard-code the Reafiner state machine with inline validation gates at every transition.
+
+- [ ] Define the formal state machine (JSON Schema):
+  ```
+  states: [INIT, RETRIEVE, JUDGE, RETRIEVE_KHOP, ABDUCE, REFINE, VALIDATE, APPLY, FINISH]
+  transitions:
+    INIT → RETRIEVE:          always
+    RETRIEVE → JUDGE:         always
+    JUDGE → RETRIEVE_KHOP:    guard: answerable == False AND step < MAX_HOPS
+    JUDGE → FINISH:           guard: answerable == True
+    RETRIEVE_KHOP → JUDGE:    always
+    JUDGE → ABDUCE:           guard: len(history) > 1 (after loop exit)
+    ABDUCE → REFINE:          always
+    REFINE → VALIDATE:        always
+    VALIDATE → APPLY:         guard: validation passed
+    APPLY → FINISH:           always
+  ```
+- [ ] Implement `StateMachine` class that:
+  - Defines allowed transitions
+  - Before each transition, runs guard condition
+  - On guard failure → returns **actionable error message** (not just "invalid transition"):
+    - Names the current state and expected next state
+    - Suggests the exact CLI command to proceed
+    - Example: `FSM guard: expected state JUDGE, got ABDUCE. Next valid action: run judgement and record <judge> tag. Query current state: deeprefine loop state --trace-file loop_trace_xxx.json`
+  - After each transition, runs post-condition check
+- [ ] Implement `deeprefine loop state --trace-file ...` — queries FSM for current state + valid next actions
+- [ ] Implement `deeprefine loop next --trace-file ...` — returns the exact next step the LLM should execute (reduces decision burden on the LLM)
+- [ ] Three-layer defense for FSM compliance in CLI agents:
+  1. **Instruction layer**: mirror all FSM rules in the platform instruction file (`.github/copilot-instructions.md`) so the LLM knows constraints before acting
+  2. **Assist layer**: `loop next` command tells the LLM what to do — it doesn't need to track state
+  3. **Enforce layer**: Python FSM guards as final backstop; reject illegal transitions with actionable errors
+- [ ] Copilot CLI error-recovery test: deliberately violate FSM, verify Copilot can read error message and correct course
+- [ ] Integrate Level 1 gates as pre-transition checks
+- [ ] Integrate Level 2 k-hop as the RETRIEVE_KHOP implementation
+- [ ] Unit tests: all valid paths + invalid transition attempts (~25 cases)
+- [ ] Functional tests: run 20 queries through the state machine, verify zero protocol violations
+
+#### 2.5 Unified Specification & Template-Based Emitter (6h)
+
+With the harness mature, design the single-source-of-truth YAML spec and Jinja2 templates for target platform emission. No IR layer — with only 2 Markdown targets, templates are simpler and sufficient.
+
+- [ ] Define Specification Schema (YAML):
+  ```yaml
+  spec_version: 1
+  state_machine: { ... }      # from Level 3
+  prompts:
+    judgement: { system: ..., user_template: ... }
+    abduction: { system: ..., user_template: ... }
+    refinement: { system: ..., user_template: ... }
+  validation_rules:           # from Level 0-3
+    output_gates: [ ... ]
+    state_guards: [ ... ]
+    post_conditions: [ ... ]
+  tool_contract:
+    commands: [graphify, deeprefine, ...]
+    file_reads: [graph.json, loop_trace_*.json, ...]
+    file_writes: [loop_trace_*.json, refinement_actions_*.txt]
+  forbidden:
+    - "Never use --skip-trace-check"
+    - ...
+  ```
+- [ ] Implement `SpecLoader`: YAML file → Python dict (lightweight, ~50 lines)
+- [ ] Write Jinja2 template: `templates/copilot-instructions.md.j2` (~80 lines)
+  - Renders state machine rules, prompt templates, forbidden rules, step-by-step protocol
+  - Uses `{{ spec.state_machine }}`-style placeholders — no intermediate IR
+- [ ] Write Jinja2 template: `templates/claude-skill.md.j2` (~80 lines)
+  - Same spec, different Markdown layout for Claude Code conventions
+- [ ] Implement `deeprefine compile --target copilot|claude` CLI subcommand
+  - Loads YAML spec → renders template → writes target file
+- [ ] The same YAML spec initializes harness config: FSM transition table, output gate regexes, k-hop parameters
+- [ ] Unit tests: spec loads without schema errors; template renders valid Markdown; regenerated output matches snapshot
+- [ ] **Design constraint**: adding a new framework target = writing one ~80-line Jinja2 template. No Python code changes needed.
+
+#### 2.6 Test Suite Construction (8h)
+
+- [ ] Unit tests: `test_agent_loop.py` (trace validation + state machine, ~25 cases)
+- [ ] Unit tests: `test_output_gates.py` (format enforcement, ~15 cases)
+- [ ] Unit tests: `test_khop.py` (expansion correctness, ~10 cases)
+- [ ] Unit tests: `test_history.py` (CRUD + mark_refined, ~10 cases)
+- [ ] Integration tests: `test_tool_contract.py`
+- [ ] Functional tests: `test_e2e_harness.py` (harness catches known drift patterns from baseline)
+- [ ] Target coverage: core modules ≥80%, overall ≥60%
+
+**Deliverables**:
+- `deeprefine_skill/harness/` — Levels 0–3 implementation
+- `deeprefine_skill/spec/` — unified YAML specification
+- `templates/` — Jinja2 templates (Copilot + Claude emitters)
+- `tests/` — complete test suite
+- `.github/workflows/ci.yml` — CI skeleton
+
+---
+
+### Phase 3: Multi-Platform Deployment (Week 8–10, ~41h)
+
+**Objective**: Deliver working `/deeprefine` on Copilot CLI (P0), then Claude Code (P1).
+
+#### 3.1 Copilot CLI Adapter — P0 (25h)
+
+- [ ] Research Copilot CLI instruction format, capability boundaries, and tool-use model
+  - Document: what tools are available? how are instructions injected? any hook system?
+  - Produce a capability matrix: Copilot CLI vs Cursor vs Claude Code
+- [ ] Run `deeprefine compile --target copilot` to emit initial `.github/copilot-instructions.md`
+- [ ] Hand-polish the emitted instructions for Copilot CLI-specific constraints
+- [ ] End-to-end test suite:
+  - [ ] Normal flow: hop1 No → hop2 Yes → abduction → refinement → apply
+  - [ ] Early-exit flow: hop1 Yes → early exit
+  - [ ] Multi-hop all-No: hop1–4 all No → abduction → refinement
+  - [ ] Edge cases: missing graph.json, malformed refinement output, empty query, non-English query
+  - [ ] Queue behaviour: multiple pending queries processed sequentially
+- [ ] For each test case, capture full trace + compare against baseline
+- [ ] If Copilot CLI lacks specific capabilities (hooks, fine-grained tool control), document as framework capability gaps
+- [ ] Write Copilot CLI user guide (`docs/copilot-cli-guide.md`)
+
+#### 3.2 Claude Code Adapter — P1 (12h)
+
+> **Prerequisite**: Copilot CLI adapter delivered. Classmates' Claude Code implementation may be available for reference.
+
+- [ ] Study Claude Code skill system: SKILL.md format, settings.json hooks, allowed-tools declaration
+- [ ] Run `deeprefine compile --target claude` to emit initial `.claude/skills/deeprefine/SKILL.md` + `.claude/settings.json`
+- [ ] Configure hooks:
+  - `PreToolUse` → enforce backup before `deeprefine apply`
+  - `PostToolUse` → auto-write audit log after `deeprefine apply`
+- [ ] End-to-end test: same test cases as Copilot CLI
+- [ ] Step-by-step trace comparison with Copilot CLI; annotate divergence sources
+
+#### 3.3 Cross-Platform Observational Comparison (4h)
+
+> **Scope note**: This is a best-effort observational comparison, not a rigorous root-cause analysis. Both Copilot CLI and Claude Code are black-box systems (prompt injection, model behaviour, tool-use handling are not fully visible). Attributing divergence to specific causes requires controlled experiments beyond the project budget. The goal is to document what differs, not to definitively explain why.
+
+- [ ] Run the same 20-query suite on both Copilot CLI and Claude Code
+- [ ] Capture full traces for each query on each platform
+- [ ] Produce quantitative divergence summary:
+  - Per-step answerable agreement rate (do both platforms agree Yes/No on each hop?)
+  - Refinement action count comparison (does one platform produce more/fewer actions?)
+  - Number of queries where final outcome differs (early-exit vs refinement vs failure)
+- [ ] High-level annotation of observed differences (e.g., "Copilot tended to answer No more often on hop 1", "Claude Code produced longer abduction text")
+- [ ] Where a divergence clearly maps to a known framework limitation (e.g., tool unavailable), note it. Otherwise, mark as "unattributed — likely model or prompt-injection difference"
+- [ ] Produce a concise divergence report (`docs/cross-platform-divergence.md`)
+
+**Deliverables**:
+- `.github/copilot-instructions.md` (P0 — primary)
+- `.claude/skills/deeprefine/SKILL.md` + `.claude/settings.json` (P1)
+- `docs/copilot-cli-guide.md`
+- `docs/cross-platform-divergence.md`
+
+---
+
+### Phase 4: CI/CD, Documentation & Release (Week 11–13, ~25h)
+
+**Objective**: Make the project understandable, usable, extensible, and CI-verified.
+
+#### 4.1 CI/CD Pipeline (8h)
+- [ ] `.github/workflows/ci.yml`:
+  ```yaml
+  on: [push, pull_request]
+  jobs:
+    lint:        ruff check + ruff format --check
+    type:        mypy deeprefine_skill/
+    unit:        pytest tests/unit/ -v --cov
+    integration: pytest tests/integration/ -v
+    functional:  pytest tests/functional/ -v  # requires graphify environment
+  ```
+- [ ] `.github/workflows/publish.yml`: tag push → build → PyPI publish
+- [ ] pre-commit hooks: ruff + mypy
+
+#### 4.2 Documentation (9h)
+- [ ] Rewrite `README.md`:
+  - Quick start (Copilot CLI users) — primary
+  - Quick start (Claude Code users) — secondary
+  - Harness architecture overview
+  - Guide for adding new framework targets
+- [ ] `CONTRIBUTING.md`: dev environment setup, running tests, PR process
+- [ ] API docs: public interfaces of `deeprefine-core` (docstrings + mkdocs or sphinx)
+
+#### 4.3 Packaging & Release (3h)
+- [ ] `pyproject.toml` extras:
+  ```toml
+  [project.optional-dependencies]
+  copilot = []
+  claude = []
+  dev = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit"]
+  ```
+- [ ] Publish release v0.2.0 to PyPI
+- [ ] Add PyPI badge + CI badge to README
+
+#### 4.4 Thesis (5h)
+- [ ] Structure:
+  1. Introduction — agent skills as a new software artefact; the gap between natural-language protocols and reliable execution
+  2. Background — Reafiner algorithm, graphify, current SKILL.md limitations
+  3. Approach — progressive harness engineering (Levels 0–3), unified spec, template-based emission
+  4. Implementation — Copilot CLI adapter (primary), Claude Code adapter (secondary)
+  5. Evaluation — harness level ablation study, cross-platform divergence analysis
+  6. Discussion — how much control to take from the LLM; framework capability gaps; lessons for agent-skill engineering
+
+**Deliverables**:
+- CI/CD pipeline (green check)
+- Full documentation
+- PyPI release v0.2.0
+- Final thesis
+
+---
+
+## 4. Harness Engineering Summary
+
+This is the core technical narrative of the project:
+
+| Level | Name | What It Does | Prevents | Status |
+|-------|------|-------------|----------|--------|
+| **0** | Post-hoc Validation | `validate_trace()` after full loop | Silent acceptance of bad traces | Exists in `agent_loop.py` |
+| **1** | Structured Output Enforcement | Real-time regex gate on each LLM output; retry on mismatch | Format errors in `<judge>`, `<abduction>`, `<refinement>` | Phase 2.2 |
+| **2** | Deterministic k-hop Expansion | BFS from Python, not LLM discretion | Entity selection errors, missed neighbours | Phase 2.3 |
+| **3** | State Machine Enforcement | Hard transitions with guard conditions; inline checkpoints | Step skipping, order violation, early-exit logic errors | Phase 2.4 |
+
+Each level builds on the previous and incrementally reduces the LLM's degrees of freedom. The levels can be toggled for ablation studies (thesis Chapter 5).
+
+---
+
+## 5. Risks & Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Copilot CLI skill system too immature for full adapter | Medium | Medium | Document as capability gap (valid finding); focus harness contribution as primary deliverable |
+| Copilot CLI lacks hook/fine-grained-tool-control support | Medium | Medium | Harness runs as Python layer independent of framework; still validates post-hoc even if inline hooks are unavailable |
+| State machine is too rigid — legitimate LLM variations get blocked | Medium | Medium | Tune guard strictness with a "strict/lenient" mode; log all rejections for analysis |
+| Claude Code skill/hook behaviour diverges from documentation | Low | Medium | Smoke-test at start of Phase 3.2 before deep investment |
+| 20-query baseline data insufficiently significant | Medium | Low | Expand to 30 queries + 3 KG domains |
+| DeepRefine repository dependencies too heavy (conda/vLLM/FAISS) | High | Low | Baseline uses SKILL.md agent mode (zero extra deps); CLI mode not required |
+
+---
+
+## 6. Milestone Timeline
+
+```
+Week 1  ██ Environment setup + paper deep-read
+Week 2  ██ Code audit complete (incl. harness insertion point map)
+Week 3  ██ Baseline data collection + harness preventability analysis → D1
+────────── Phase 1 complete ──────────
+
+Week 4  ██ Harness Level 1 (output gates) + Level 2 (k-hop)
+Week 5  ██ Harness Level 3 (state machine) implementation
+Week 6  ██ Unified spec design + template-based emitter implementation
+Week 7  ██ Test suite completion + CI skeleton → D2
+────────── Phase 2 complete ──────────
+
+Week 8  ██ Copilot CLI research + adapter scaffolding
+Week 9  ██ Copilot CLI end-to-end passing
+Week 10 ██ Claude Code adapter + cross-platform verification → D3+D4
+────────── Phase 3 complete ──────────
+
+Week 11 ██ CI/CD + documentation
+Week 12 ██ Thesis + packaging
+Week 13 ██ Final revisions + release v0.2.0 → D5+D6
+────────── Phase 4 complete ──────────
+```

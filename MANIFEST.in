@@ -1,3 +1,4 @@
 include README.md
 include LICENSE
 include SKILL.md
+include deeprefine_skill/SKILL_COPILOT.md

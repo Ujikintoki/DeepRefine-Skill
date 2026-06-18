@@ -1,4 +1,11 @@
-"""DeepRefine CLI: `deeprefine cursor install` (graphify-style)."""
+"""DeepRefine CLI — command-line entry point for the DeepRefine agent skill.
+
+Provides subcommands for platform-specific skill installation (Cursor,
+Copilot CLI), query-history management, FAISS index rebuilding, graph
+refinement, loop-trace lifecycle management, and applying refinement
+actions to ``graph.json``.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -12,7 +19,12 @@ from deeprefine_skill.history import (
     pending_queries,
     sync_history_from_memory,
 )
-from deeprefine_skill.installers import install_cursor_skill, uninstall_cursor_skill
+from deeprefine_skill.installers import (
+    install_copilot_skill,
+    install_cursor_skill,
+    uninstall_copilot_skill,
+    uninstall_cursor_skill,
+)
 from deeprefine_skill.paths import (
     env_defaults,
     find_deeprefine_repo,
@@ -27,6 +39,7 @@ def _setup_repo_imports() -> None:
 
 
 def cmd_cursor_install(args: argparse.Namespace) -> int:
+    """``deeprefine cursor install`` — install SKILL.md for Cursor."""
     dest = install_cursor_skill(project=args.project)
     scope = "project" if args.project else "user"
     print(f"Installed DeepRefine Cursor skill ({scope}) → {dest}")
@@ -36,10 +49,32 @@ def cmd_cursor_install(args: argparse.Namespace) -> int:
 
 
 def cmd_cursor_uninstall(args: argparse.Namespace) -> int:
+    """``deeprefine cursor uninstall`` — remove the Cursor skill."""
     removed = uninstall_cursor_skill(project=args.project)
     if removed:
         scope = "project" if args.project else "user"
         print(f"Removed DeepRefine Cursor skill ({scope}).")
+    else:
+        print("Skill not installed at the selected scope.")
+    return 0
+
+
+def cmd_copilot_install(args: argparse.Namespace) -> int:
+    """``deeprefine copilot install`` — install SKILL.md for Copilot CLI."""
+    dest = install_copilot_skill(project=args.project)
+    scope = "project" if args.project else "user"
+    print(f"Installed DeepRefine Copilot CLI skill ({scope}) → {dest}")
+    if args.project:
+        print("Run /skills reload in Copilot CLI, then use /deeprefine.")
+    return 0
+
+
+def cmd_copilot_uninstall(args: argparse.Namespace) -> int:
+    """``deeprefine copilot uninstall`` — remove the Copilot CLI skill."""
+    removed = uninstall_copilot_skill(project=args.project)
+    if removed:
+        scope = "project" if args.project else "user"
+        print(f"Removed DeepRefine Copilot CLI skill ({scope}).")
     else:
         print("Skill not installed at the selected scope.")
     return 0
@@ -311,6 +346,20 @@ def main(argv: list[str] | None = None) -> int:
     p_cu = cursor_sub.add_parser("uninstall", help="Remove Cursor skill")
     _add_project_flag(p_cu)
     p_cu.set_defaults(func=cmd_cursor_uninstall, _default_project=True)
+
+    # deeprefine copilot install | uninstall
+    p_copilot = sub.add_parser("copilot", help="GitHub Copilot CLI integration")
+    copilot_sub = p_copilot.add_subparsers(dest="copilot_cmd", required=True)
+
+    p_copi = copilot_sub.add_parser(
+        "install", help="Install /deeprefine skill for Copilot CLI"
+    )
+    _add_project_flag(p_copi)
+    p_copi.set_defaults(func=cmd_copilot_install, _default_project=True)
+
+    p_copu = copilot_sub.add_parser("uninstall", help="Remove Copilot CLI skill")
+    _add_project_flag(p_copu)
+    p_copu.set_defaults(func=cmd_copilot_uninstall, _default_project=True)
 
     # deeprefine install (alias)
     p_install = sub.add_parser(
