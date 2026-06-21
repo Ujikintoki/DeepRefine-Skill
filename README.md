@@ -27,9 +27,9 @@
 
 DeepRefine-Skill plugs into agent workflows and use a single command `/deeprefine` in your agent CLI to refine and evolve your LLM-Wiki (e.g., **[graphify](https://github.com/safishamsi/graphify)**) knowledge base.
 
-```bash
-/deeprefine
-```
+<p align="center">
+<img src="assets/demo-typing-deeprefine.svg" alt="Demo: /deeprefine" />
+</p>
 
 It refines your graphify knowledge graph for better future retrieval and Q&A quality.
 
