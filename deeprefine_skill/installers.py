@@ -16,8 +16,10 @@ from pathlib import Path
 _SKILL_MD_NAME = "SKILL.md"
 _SKILL_COPILOT_MD_NAME = "SKILL_COPILOT.md"
 _CODEX_SKILL_DIR = "codex_skill"
+_CLAUDE_SKILL_DIR = "claude_skill"
 _CODEX_AGENTS_DIR = "agents"
 _CODEX_REFERENCES_DIR = "references"
+_CLAUDE_REFERENCES_DIR = "references"
 _LEGACY_CODEX_AGENT_LOOP_REF_NAME = "deeprefine-agent-loop.md"
 _OPENAI_YAML_NAME = "openai.yaml"
 _GEMINI_EXTENSION_NAME = "deeprefine-skill"
@@ -84,6 +86,37 @@ def codex_skill_template_path() -> Path:
     raise FileNotFoundError(
         "Missing Codex skill template (expected under "
         "deeprefine_skill/codex_skill/)."
+    )
+
+
+def skill_md_path_claude() -> Path:
+    """Return the path to the Claude Code SKILL.md source."""
+    return claude_skill_template_path() / _SKILL_MD_NAME
+
+
+def claude_references_path() -> Path:
+    """Return the Claude Code references template directory."""
+    refs = claude_skill_template_path() / _CLAUDE_REFERENCES_DIR
+    if refs.is_dir():
+        return refs
+    raise FileNotFoundError(
+        "Missing Claude Code references template (expected under "
+        "deeprefine_skill/claude_skill/references/)."
+    )
+
+
+def claude_skill_template_path() -> Path:
+    """Return the Claude Code skill template directory."""
+    bundled = Path(__file__).resolve().parent / _CLAUDE_SKILL_DIR
+    if (bundled / _SKILL_MD_NAME).is_file():
+        return bundled
+    repo_root = Path(__file__).resolve().parents[1]
+    fallback = repo_root / "deeprefine_skill" / _CLAUDE_SKILL_DIR
+    if (fallback / _SKILL_MD_NAME).is_file():
+        return fallback
+    raise FileNotFoundError(
+        "Missing Claude Code skill template (expected under "
+        "deeprefine_skill/claude_skill/)."
     )
 
 
@@ -288,6 +321,66 @@ def uninstall_codex_skill(*, project: bool) -> bool:
         dest_dir,
         dest_dir.parent,
     ]:
+        try:
+            parent.rmdir()
+        except OSError:
+            pass
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# Claude Code
+# ---------------------------------------------------------------------------
+
+
+def install_claude_skill(*, project: bool) -> Path:
+    """Install the Claude Code skill into ``.claude/skills/deeprefine/``.
+
+    Parameters
+    ----------
+    project : bool
+        If *True*, install under the current working directory
+        (``.claude/skills/deeprefine/``). If *False*, install under
+        ``~/.claude/skills/deeprefine/`` (user-wide).
+
+    Returns
+    -------
+    Path
+        Destination path of the installed ``SKILL.md``.
+    """
+    src_skill = skill_md_path_claude()
+    src_references = claude_references_path()
+    if project:
+        dest_dir = Path.cwd() / ".claude" / "skills" / "deeprefine"
+    else:
+        dest_dir = Path.home() / ".claude" / "skills" / "deeprefine"
+    references_dir = dest_dir / _CLAUDE_REFERENCES_DIR
+    references_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src_skill, dest_dir / _SKILL_MD_NAME)
+    for ref in src_references.glob("*.md"):
+        shutil.copy2(ref, references_dir / ref.name)
+    return dest_dir / _SKILL_MD_NAME
+
+
+def uninstall_claude_skill(*, project: bool) -> bool:
+    """Remove a previously installed Claude Code skill."""
+    if project:
+        dest_dir = Path.cwd() / ".claude" / "skills" / "deeprefine"
+    else:
+        dest_dir = Path.home() / ".claude" / "skills" / "deeprefine"
+
+    removed = False
+    for dest in [
+        dest_dir / _SKILL_MD_NAME,
+        dest_dir / _CLAUDE_REFERENCES_DIR / "reafiner-workflow.md",
+        dest_dir / _CLAUDE_REFERENCES_DIR / "llm-prompts.md",
+        dest_dir / _CLAUDE_REFERENCES_DIR / "trace-and-commands.md",
+    ]:
+        if dest.is_file():
+            dest.unlink()
+            removed = True
+
+    for parent in [dest_dir / _CLAUDE_REFERENCES_DIR, dest_dir, dest_dir.parent]:
         try:
             parent.rmdir()
         except OSError:
