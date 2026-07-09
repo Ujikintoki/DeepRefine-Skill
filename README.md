@@ -40,11 +40,14 @@ Supported agent frameworks:
   <a href="https://github.com/google-gemini/gemini-cli" title="Gemini CLI"><img src="./assets/gemini-cli-icon_full-color@4x.png" alt="Gemini CLI" height="40"/></a>&nbsp;&nbsp;
   <a href="https://docs.github.com/en/copilot" title="GitHub Copilot CLI" style="text-decoration: none; color: inherit;"><img src="./assets/github-copilot__1_-removebg-preview.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
   <a href="https://openai.com/codex/" title="Codex CLI" style="text-decoration: none; color: inherit;"><img src="./assets/codex-color.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
+  <a href="https://opencode.ai/" title="OpenCode" style="text-decoration: none; color: inherit;"><img src="./assets/opencode-logo-dark.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
+  <a href="https://claude.com/product/claude-code" title="Claude Code" style="text-decoration: none; color: inherit;"><img src="./assets/claudecode-color.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
 </p>
 
 ---
 
 ## News
+- **[2026/7/9] v0.1.9** -  Claude Code and OpenCode supported.
 - **[2026/7/3] v0.1.9** -  Release with Codex, Copilot CLI, and Gemini CLI skills bundled; dry-run-first refinement, evidence-aware action review (HIGH/MEDIUM/LOW), ambiguous-node warnings, and LOW-confidence apply guard.
 - **[2026/6/24] v0.1.9** - Codex skill supported.
 - **[2026/6/18] v0.1.9** - Gemini CLI and Copilot CLI supported.
@@ -553,8 +556,7 @@ deeprefine refine          # dry-run by default
 
 ```bash
 deeprefine --help
-# Expect: cursor, copilot, codex, claude, gemini, history, index, refine, review, apply, loop
-# Expect: cursor, copilot, codex, opencode, gemini, history, index, refine, review, apply, loop
+# Expect: cursor, copilot, codex, claude, opencode, gemini, history, index, refine, review, apply, loop
 ```
 </details>
 
