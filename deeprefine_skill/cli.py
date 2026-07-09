@@ -24,12 +24,14 @@ from deeprefine_skill.history import (
 from deeprefine_skill.installers import (
     copy_gemini_extension,
     gemini_extension_path,
+    install_claude_skill,
     install_codex_skill,
     install_copilot_skill,
     install_cursor_skill,
     install_gemini_extension,
     install_opencode_skill,
     link_gemini_extension,
+    uninstall_claude_skill,
     uninstall_codex_skill,
     uninstall_copilot_skill,
     uninstall_cursor_skill,
@@ -127,6 +129,31 @@ def cmd_codex_uninstall(args: argparse.Namespace) -> int:
     if removed:
         scope = "project" if args.project else "user"
         print(f"Removed DeepRefine Codex skill ({scope}).")
+    else:
+        print("Skill not installed at the selected scope.")
+    return 0
+
+# ---------------------------------------------------------------------------
+# Claude Code handlers
+# ---------------------------------------------------------------------------
+
+
+def cmd_claude_install(args: argparse.Namespace) -> int:
+    """``deeprefine claude install`` - install SKILL.md for Claude Code."""
+    dest = install_claude_skill(project=args.project)
+    scope = "project" if args.project else "user"
+    print(f"Installed DeepRefine Claude Code skill ({scope}) -> {dest}")
+    if args.project:
+        print("Restart Claude Code, then invoke /deeprefine.")
+    return 0
+
+
+def cmd_claude_uninstall(args: argparse.Namespace) -> int:
+    """``deeprefine claude uninstall`` - remove the Claude Code skill."""
+    removed = uninstall_claude_skill(project=args.project)
+    if removed:
+        scope = "project" if args.project else "user"
+        print(f"Removed DeepRefine Claude Code skill ({scope}).")
     else:
         print("Skill not installed at the selected scope.")
     return 0
@@ -677,6 +704,33 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_codu.set_defaults(func=cmd_codex_uninstall, _default_project=True)
 
+    # deeprefine claude install | uninstall
+    p_claude = sub.add_parser("claude", help="Claude Code skill integration")
+    claude_sub = p_claude.add_subparsers(dest="claude_cmd", required=True)
+
+    p_cli_i = claude_sub.add_parser(
+        "install", help="Install /deeprefine skill for Claude Code"
+    )
+    _add_project_flag(
+        p_cli_i,
+        project_help=(
+            "Install to .claude/skills/deeprefine in the current directory "
+            "(default for claude install)"
+        ),
+        user_help="Install to ~/.claude/skills/deeprefine (all projects)",
+    )
+    p_cli_i.set_defaults(func=cmd_claude_install, _default_project=True)
+
+    p_cli_u = claude_sub.add_parser("uninstall", help="Remove Claude Code skill")
+    _add_project_flag(
+        p_cli_u,
+        project_help=(
+            "Remove from .claude/skills/deeprefine in the current directory "
+            "(default for claude uninstall)"
+        ),
+        user_help="Remove from ~/.claude/skills/deeprefine (all projects)",
+    )
+    p_cli_u.set_defaults(func=cmd_claude_uninstall, _default_project=True)
     # deeprefine opencode install | uninstall
     p_opencode = sub.add_parser("opencode", help="OpenCode IDE integration")
     opencode_sub = p_opencode.add_subparsers(dest="opencode_cmd", required=True)

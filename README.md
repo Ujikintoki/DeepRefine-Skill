@@ -72,6 +72,8 @@ deeprefine copilot install
 deeprefine gemini install # or deeprefine gemini link
 # for Codex
 deeprefine codex install
+# for Claude Code
+deeprefine claude install
 ```
 
 After upgrading the package, run the command again to refresh local skill files.
@@ -136,6 +138,9 @@ Run from your KB project root.
 | `deeprefine codex install` | Install `$deeprefine` skill for Codex (`.agents/skills/deeprefine/`) |
 | `deeprefine codex install --user` | Install Codex skill for all projects (`~/.codex/skills/deeprefine/`) |
 | `deeprefine codex uninstall` | Remove Codex skill |
+| `deeprefine claude install` | Install `/deeprefine` skill for Claude Code (`.claude/skills/deeprefine/`) |
+| `deeprefine claude install --user` | Install Claude Code skill for all projects (`~/.claude/skills/deeprefine/`) |
+| `deeprefine claude uninstall` | Remove the Claude Code skill |
 | `deeprefine gemini path` | Print the extension root used for Gemini CLI |
 | `deeprefine gemini link` | Link the current source checkout with `gemini extensions link` |
 | `deeprefine gemini install` | Install the bundled extension with `gemini extensions install` |
@@ -426,6 +431,54 @@ deeprefine opencode uninstall --project
 
 ---
 
+## Claude Code Integration
+
+<details>
+<summary><strong>Setup, commands, and session usage</strong></summary>
+
+DeepRefine works as a Claude Code Agent Skill. The installer writes the
+Claude-specific skill file to `.claude/skills/deeprefine/SKILL.md`, along with
+independently maintained references under
+`.claude/skills/deeprefine/references/` for the Reafiner workflow, LLM
+prompts, and trace/command details.
+
+### One-time setup
+
+```bash
+cd /path/to/your-kb-project
+pip install deeprefine-cli
+deeprefine claude install --project
+```
+
+After upgrading the package, run `deeprefine claude install --project` again
+to refresh the local skill files. Restart Claude Code, then invoke:
+
+```text
+/deeprefine
+```
+
+### Claude Code commands
+
+| Command | Description |
+|---------|-------------|
+| `deeprefine claude install` | Install the Claude Code skill into `.claude/skills/deeprefine/` |
+| `deeprefine claude install --user` | Install the Claude Code skill into `~/.claude/skills/deeprefine/` |
+| `deeprefine claude uninstall` | Remove the Claude Code skill |
+
+### Claude Code session
+
+```text
+/deeprefine
+```
+
+Claude Code runs the full Reafiner loop for pending queries, stops after
+`deeprefine review`, and presents the HIGH/MEDIUM/LOW report. Reply with an
+explicit apply/approve message only after reviewing the proposed actions.
+
+</details>
+
+---
+
 ## Terminal CLI (FAISS + API/vLLM)
 
 <details>
@@ -500,6 +553,7 @@ deeprefine refine          # dry-run by default
 
 ```bash
 deeprefine --help
+# Expect: cursor, copilot, codex, claude, gemini, history, index, refine, review, apply, loop
 # Expect: cursor, copilot, codex, opencode, gemini, history, index, refine, review, apply, loop
 ```
 </details>
