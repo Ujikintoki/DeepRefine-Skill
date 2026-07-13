@@ -324,11 +324,11 @@ def cmd_index(args: argparse.Namespace) -> int:
     del llm
     load_or_build_data(
         paths["graph_json"],
-        paths["reafiner_pkl"],
+        paths["deeprefine_pkl"],
         encoder,
         rebuild=True,
     )
-    print(f"Index cache: {paths['reafiner_pkl']}")
+    print(f"Index cache: {paths['deeprefine_pkl']}")
     return 0
 
 
@@ -369,7 +369,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         errs = validate_trace(trace, refinement_text=text)
         if errs:
             print(
-                "Loop trace validation failed (must match Reafiner.refine()):",
+                "Loop trace validation failed (must match DeepRefine.refine()):",
                 file=sys.stderr,
             )
             for e in errs:
@@ -511,11 +511,11 @@ def cmd_loop_validate(args: argparse.Namespace) -> int:
             refinement_text = Path(ref).read_text(encoding="utf-8")
     errs = validate_trace(load_trace(trace_path), refinement_text=refinement_text)
     if errs:
-        print("INVALID — does not match Reafiner.refine() control flow:")
+        print("INVALID — does not match DeepRefine.refine() control flow:")
         for e in errs:
             print(f"  - {e}")
         return 1
-    print("OK — loop trace matches Reafiner.refine() rules.")
+    print("OK — loop trace matches DeepRefine.refine() rules.")
     return 0
 
 
@@ -932,7 +932,7 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument(
         "--trace-file",
         required=False,
-        help="loop_trace_<id>.json — validated against Reafiner.refine() before apply",
+        help="loop_trace_<id>.json — validated against DeepRefine.refine() before apply",
     )
     p_apply.add_argument(
         "--skip-trace-check",
@@ -955,14 +955,14 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--project-root", default=None)
     p_apply.set_defaults(func=cmd_apply)
 
-    p_loop = sub.add_parser("loop", help="Agent Reafiner loop trace (no FAISS)")
+    p_loop = sub.add_parser("loop", help="Agent refinement loop trace (no FAISS)")
     loop_sub = p_loop.add_subparsers(dest="loop_cmd", required=True)
     p_li = loop_sub.add_parser("init", help="Create loop_trace_<id>.json template")
     p_li.add_argument("--query", required=True)
     p_li.add_argument("--trace-file", default=None)
     p_li.set_defaults(func=cmd_loop_init)
     p_lv = loop_sub.add_parser(
-        "validate", help="Check trace matches Reafiner control flow"
+        "validate", help="Check trace matches DeepRefine control flow"
     )
     p_lv.add_argument("--trace-file", required=True)
     p_lv.add_argument("--refinement-file", default=None)

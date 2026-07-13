@@ -1,17 +1,17 @@
 ---
 name: deeprefine
 description: >-
-  Refine a graphify knowledge graph using the DeepRefine Reafiner algorithm.
+  Refine a graphify knowledge graph using the DeepRefine refinement algorithm.
   Use when the user asks to refine their KG, improve retrieval quality, fix
   incomplete or incorrect knowledge graph triples, or explicitly invokes
-  /deeprefine.  Implements the same control flow as Reafiner.refine() with
+  /deeprefine.  Implements the same control flow as DeepRefine.refine() with
   graphify search instead of FAISS, session LLM for judgement, and dry-run
   review before approved graph writes.
 allowed-tools: shell
 license: MIT
 ---
 
-# DeepRefine — Agent Reafiner Loop (Copilot CLI)
+# DeepRefine — Agent Refinement Loop (Copilot CLI)
 
 > **Platform**: This is the Copilot CLI variant of the DeepRefine agent skill.
 > Shell commands (`deeprefine`, `graphify`) are pre-approved via
@@ -33,7 +33,7 @@ refine / improve / fix / diagnose the knowledge graph.
 **Behavior**:
 
 1. `deeprefine history sync-memory`
-2. Process all pending queries through the full Reafiner loop
+2. Process all pending queries through the full refinement loop
 3. For early-exit queries: `loop finish` immediately
 4. For refinement-path queries: `validate` → `review` → **HARD STOP**
 5. Present the review (HIGH/MEDIUM/LOW labels, evidence, warnings) to the user
@@ -114,8 +114,8 @@ valid trace as approval.  Do not apply in the same `/deeprefine` turn.
 
 ---
 
-You **MUST** implement the **same control flow** as `Reafiner.refine()` in
-DeepRefine (`autorefiner/src/reafiner.py`).
+You **MUST** implement the **same control flow** as `DeepRefine.refine()` in
+DeepRefine (`autorefiner/src/deeprefine.py`).
 
 | Component    | Agent mode                                                    | CLI `deeprefine refine`      |
 |--------------|---------------------------------------------------------------|------------------------------|
@@ -149,7 +149,7 @@ bypass with `--skip-trace-check`.
 
 ---
 
-## Constants (match `refine_runner.py` / Reafiner)
+## Constants (match `refine_runner.py` / DeepRefine)
 
 ```text
 MAX_HOPS = 4
@@ -194,7 +194,7 @@ the latest one.
    - preserve file order
 3. If pending queue is non-empty: set `target_queries = pending_queue`.
 4. If pending queue is empty: set `target_queries = [current session question]`.
-5. Run the full Reafiner loop for **each** query in `target_queries`, one by
+5. Run the full refinement loop for **each** query in `target_queries`, one by
    one.
 6. For early-exit queries, finish immediately.  For refinement-path queries,
    generate review output and wait for user approval before `apply` +
@@ -202,7 +202,7 @@ the latest one.
 
 ---
 
-## Control Flow (must match `Reafiner.refine()`)
+## Control Flow (must match `DeepRefine.refine()`)
 
 Pseudocode — follow **exactly**:
 
@@ -244,7 +244,7 @@ for question in target_queries:
         if answerable:
             BREAK   # stop hop loop
 
-    # --- same branch as Reafiner.refine() line 314+ ---
+    # --- same branch as DeepRefine.refine() line 314+ ---
     if len(interaction_history) <= 1:
         # Early exit: first hop was answerable — NO graph refinement
         set trace.early_exit = true
@@ -280,7 +280,7 @@ for question in target_queries:
             deeprefine loop finish --trace-file ... --refinement-file ...
 ```
 
-**Critical Reafiner rule:** refinement runs when `len(interaction_history) > 1`,
+**Critical refinement rule:** refinement runs when `len(interaction_history) > 1`,
 not only when all judgements are `No`.
 
 **Safe-review rule:** a refinement path is dry-run by default.  Generating
@@ -357,7 +357,7 @@ Analyze the reasons of the unanswerable questions based on the given interaction
 Interaction history: {interaction_history}
 ```
 
-`{interaction_history}` format (same as Reafiner):
+`{interaction_history}` format (same as DeepRefine):
 
 ```text
 Step1:
@@ -410,7 +410,7 @@ Copy and tick each item in your final message:
 [ ] Step 1: graphify query executed (evidence in trace)
 [ ] Each step: <judge>Yes|No</judge> shown in chat
 [ ] Hops stopped on Yes OR reached MAX_HOPS
-[ ] early_exit OR (abduction + refinement) per Reafiner branch
+[ ] early_exit OR (abduction + refinement) per DeepRefine branch
 [ ] deeprefine loop validate passed
 [ ] deeprefine review generated with HIGH/MEDIUM/LOW labels
 [ ] graph.json intentionally left unchanged pending next-message approval OR user approved in a follow-up message

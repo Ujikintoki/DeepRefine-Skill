@@ -18,7 +18,7 @@ This installs:
 .agents/skills/deeprefine/
 |-- SKILL.md
 |-- references/
-|   |-- reafiner-workflow.md
+|   |-- deeprefine-workflow.md
 |   |-- llm-prompts.md
 |   `-- trace-and-commands.md
 `-- agents/
@@ -37,7 +37,7 @@ User-wide installation writes to:
 ~/.codex/skills/deeprefine/
 |-- SKILL.md
 |-- references/
-|   |-- reafiner-workflow.md
+|   |-- deeprefine-workflow.md
 |   |-- llm-prompts.md
 |   `-- trace-and-commands.md
 `-- agents/
@@ -65,7 +65,7 @@ The Codex skill:
 
 1. Runs `deeprefine history sync-memory`.
 2. Processes pending query history from `graphify-out/.deeprefine/history.jsonl`.
-3. Uses Graphify retrieval and the session model for the Reafiner loop.
+3. Uses Graphify retrieval and the session model for the refinement loop.
 4. Generates proposed `<refinement>` actions when refinement is needed.
 5. Runs `deeprefine loop validate` and `deeprefine review`.
 6. Stops before graph writes and asks for explicit approval.

@@ -1,4 +1,4 @@
-# DeepRefine Reafiner Workflow
+# DeepRefine Agent Workflow
 
 Use this reference for the full `$deeprefine` / `/deeprefine` workflow.
 
@@ -78,7 +78,7 @@ the latest query.
 
 ## Control Flow
 
-Follow the same branch structure as `Reafiner.refine()`.
+Follow the same branch structure as `DeepRefine.refine()`.
 
 ```text
 target_queries = pending_history_queries()

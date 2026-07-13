@@ -61,7 +61,7 @@ def graphify_paths(project_root: Path) -> dict[str, Path]:
         "graph_json": out / "graph.json",
         "history": deep / "history.jsonl",
         "cache_dir": deep / "cache",
-        "reafiner_pkl": deep / "cache" / "reafiner_data.pkl",
+        "deeprefine_pkl": deep / "cache" / "deeprefine_data.pkl",
         "graph_backup": deep / "graph.json.bak",
     }
 

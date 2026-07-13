@@ -57,7 +57,7 @@ def _entity_nodes(kg: nx.DiGraph) -> list[str]:
     ]
 
 
-def build_reafiner_data(
+def build_deeprefine_data(
     kg: nx.DiGraph,
     sentence_encoder: BaseEmbeddingModel,
     *,
@@ -136,14 +136,14 @@ def load_or_build_data(
         with cache_pkl.open("rb") as f:
             bundle = pickle.load(f)
         raw = bundle["graphify_raw"]
-        data = bundle["reafiner_data"]
+        data = bundle["deeprefine_data"]
         return raw, data
 
     raw, kg = load_graphify_json(graph_path)
-    data = build_reafiner_data(kg, sentence_encoder)
+    data = build_deeprefine_data(kg, sentence_encoder)
     cache_pkl.parent.mkdir(parents=True, exist_ok=True)
     with cache_pkl.open("wb") as f:
-        pickle.dump({"graphify_raw": raw, "reafiner_data": data}, f)
+        pickle.dump({"graphify_raw": raw, "deeprefine_data": data}, f)
     return raw, data
 
 
@@ -204,4 +204,4 @@ def save_graphify_json(
 def save_bundle(cache_pkl: Path, raw: dict[str, Any], data: dict[str, Any]) -> None:
     cache_pkl.parent.mkdir(parents=True, exist_ok=True)
     with cache_pkl.open("wb") as f:
-        pickle.dump({"graphify_raw": raw, "reafiner_data": data}, f)
+        pickle.dump({"graphify_raw": raw, "deeprefine_data": data}, f)

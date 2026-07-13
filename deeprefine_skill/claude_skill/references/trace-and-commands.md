@@ -13,7 +13,7 @@ Report these items in chat for each query:
 [ ] Step 1: graphify query executed (evidence in trace)
 [ ] Each step: <judge>Yes|No</judge> shown in chat
 [ ] Hops stopped on Yes OR reached MAX_HOPS
-[ ] early_exit OR (abduction + refinement) per Reafiner branch
+[ ] early_exit OR (abduction + refinement) per DeepRefine branch
 [ ] deeprefine loop validate passed
 [ ] deeprefine review generated with HIGH/MEDIUM/LOW labels
 [ ] graph.json intentionally left unchanged pending next-message approval OR user approved in a follow-up message

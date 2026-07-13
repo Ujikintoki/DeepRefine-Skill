@@ -157,7 +157,7 @@ Run from your KB project root.
 | `deeprefine history sync-memory` | Import `graphify-out/memory/query_*.md` into DeepRefine history |
 | `deeprefine history list --pending` | Show unrefined queue |
 | `deeprefine loop init --query "..."` | Create `loop_trace_<id>.json` template |
-| `deeprefine loop validate --trace-file T` | Validate trace against Reafiner control flow |
+| `deeprefine loop validate --trace-file T` | Validate trace against DeepRefine control flow |
 | `deeprefine review --trace-file T --refinement-file F` | Review proposed actions with HIGH/MEDIUM/LOW evidence labels; no graph write |
 | `deeprefine apply --refresh-wiki --trace-file T --refinement-file F` | Apply actions and regenerate `graphify-out/wiki` from the refined graph; graph + Wiki are committed together |
 | `deeprefine apply --refresh-wiki --allow-low-confidence --trace-file T --refinement-file F` | Refresh the Wiki while explicitly overriding the LOW-confidence guard |
@@ -194,7 +194,7 @@ When the knowledge base was created with Graphify Wiki output, use `--refresh-wi
 DeepRefine works as a Codex skill. The installer writes the Codex-specific
 skill file to `.agents/skills/deeprefine/SKILL.md` and UI metadata to
 `.agents/skills/deeprefine/agents/openai.yaml`. It also installs focused
-references under `.agents/skills/deeprefine/references/` for the Reafiner
+references under `.agents/skills/deeprefine/references/` for the refinement
 workflow, LLM prompts, and trace/command details.
 
 ### One-time setup
@@ -227,7 +227,7 @@ $deeprefine
 $deeprefine
 ```
 
-Codex runs the full agent-native Reafiner loop for pending queries, stops after
+Codex runs the full agent-native refinement loop for pending queries, stops after
 `deeprefine review`, and presents the HIGH/MEDIUM/LOW report. Reply with an
 explicit apply/approve message only after reviewing the proposed actions.
 
@@ -269,7 +269,7 @@ keyword-based mode detection in the SKILL.md preamble:
 
 | Mode | Trigger keywords | Behavior |
 |------|-----------------|----------|
-| **Full workflow** | `/deeprefine`, "refine", "improve", "fix" | Full Reafiner loop; stops after dry-run review; asks for approval |
+| **Full workflow** | `/deeprefine`, "refine", "improve", "fix" | Full refinement loop; stops after dry-run review; asks for approval |
 | **Review only** | "review", "check", "audit", "inspect", "dry-run" | Reads trace + refinement file; shows HIGH/MEDIUM/LOW report; no graph writes |
 | **Apply only** | "approve", "apply", "write", "go ahead" | Runs `deeprefine apply` only after a prior review; requires explicit user approval in the current message |
 
@@ -279,7 +279,7 @@ keyword-based mode detection in the SKILL.md preamble:
 /deeprefine
 ```
 
-The agent runs the full Reafiner loop for all pending queries.  For
+The agent runs the full refinement loop for all pending queries.  For
 refinement-path queries, it stops after the dry-run review and asks:
 
 ```text
@@ -449,7 +449,7 @@ deeprefine opencode uninstall --project
 DeepRefine works as a Claude Code Agent Skill. The installer writes the
 Claude-specific skill file to `.claude/skills/deeprefine/SKILL.md`, along with
 independently maintained references under
-`.claude/skills/deeprefine/references/` for the Reafiner workflow, LLM
+`.claude/skills/deeprefine/references/` for the refinement workflow, LLM
 prompts, and trace/command details.
 
 ### One-time setup
@@ -481,7 +481,7 @@ to refresh the local skill files. Restart Claude Code, then invoke:
 /deeprefine
 ```
 
-Claude Code runs the full Reafiner loop for pending queries, stops after
+Claude Code runs the full refinement loop for pending queries, stops after
 `deeprefine review`, and presents the HIGH/MEDIUM/LOW report. Reply with an
 explicit apply/approve message only after reviewing the proposed actions.
 

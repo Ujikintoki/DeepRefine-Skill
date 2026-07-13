@@ -1,12 +1,12 @@
 ---
 name: deeprefine
 description: >-
-  Agent-native DeepRefine Reafiner loop — same control flow as Reafiner.refine(),
+  Agent-native DeepRefine refinement loop — same control flow as DeepRefine.refine(),
   graphify search instead of FAISS, session LLM, dry-run review before approved graph writes.
 disable-model-invocation: false
 ---
 
-# DeepRefine — Agent Reafiner loop (strict)
+# DeepRefine — Agent refinement loop (strict)
 
 ## Default safety policy: dry-run only
 
@@ -31,7 +31,7 @@ Do not treat generation of `<refinement>` actions as approval. Do not treat a va
 
 ---
 
-You **MUST** implement the **same control flow** as `Reafiner.refine()` in DeepRefine (`autorefiner/src/reafiner.py`).
+You **MUST** implement the **same control flow** as `DeepRefine.refine()` in DeepRefine (`autorefiner/src/deeprefine.py`).
 
 | Component | Agent mode | CLI `deeprefine refine` |
 |-----------|------------|-------------------------|
@@ -60,7 +60,7 @@ If validation fails, **fix the trace and re-run the missing step** — do not by
 
 ---
 
-## Constants (match `refine_runner.py` / Reafiner)
+## Constants (match `refine_runner.py` / DeepRefine)
 
 ```text
 MAX_HOPS = 4
@@ -103,12 +103,12 @@ Run `deeprefine loop validate --trace-file ...` after abduction and before `revi
    - preserve file order
 3. If pending queue is non-empty: set `target_queries = pending_queue`.
 4. If pending queue is empty: set `target_queries = [current session question]`.
-5. Run the full Reafiner loop for **each** query in `target_queries`, one by one.
+5. Run the full refinement loop for **each** query in `target_queries`, one by one.
 6. For early-exit queries, finish immediately. For refinement-path queries, generate review output and wait for user approval before `apply` + `loop finish`.
 
 ---
 
-## Control flow (must match `Reafiner.refine()`)
+## Control flow (must match `DeepRefine.refine()`)
 
 Pseudocode — follow **exactly**:
 
@@ -150,7 +150,7 @@ for question in target_queries:
         if answerable:
             BREAK   # stop hop loop
 
-    # --- same branch as Reafiner.refine() line 314+ ---
+    # --- same branch as DeepRefine.refine() line 314+ ---
     if len(interaction_history) <= 1:
         # Early exit: first hop was answerable — NO graph refinement
         set trace.early_exit = true
@@ -186,7 +186,7 @@ for question in target_queries:
             deeprefine loop finish --trace-file ... --refinement-file ...
 ```
 
-**Critical Reafiner rule:** refinement runs when `len(interaction_history) > 1`, not only when all judgements are `No`.
+**Critical refinement rule:** refinement runs when `len(interaction_history) > 1`, not only when all judgements are `No`.
 
 **Safe-review rule:** a refinement path is dry-run by default. Generating `<refinement>` actions is not approval to write `graph.json`, and a normal `/deeprefine` turn must end after `deeprefine review`.
 
@@ -255,7 +255,7 @@ Analyze the reasons of the unanswerable questions based on the given interaction
 Interaction history: {interaction_history}
 ```
 
-`{interaction_history}` format (same as Reafiner):
+`{interaction_history}` format (same as DeepRefine):
 
 ```text
 Step1:
@@ -307,7 +307,7 @@ Copy and tick each item in your final message:
 [ ] Step 1: graphify query executed (evidence in trace)
 [ ] Each step: <judge>Yes|No</judge> shown in chat
 [ ] Hops stopped on Yes OR reached MAX_HOPS
-[ ] early_exit OR (abduction + refinement) per Reafiner branch
+[ ] early_exit OR (abduction + refinement) per DeepRefine branch
 [ ] deeprefine loop validate passed
 [ ] deeprefine review generated with HIGH/MEDIUM/LOW labels
 [ ] graph.json intentionally left unchanged pending next-message approval OR user approved in a follow-up message
