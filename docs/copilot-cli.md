@@ -45,7 +45,7 @@ Instead, the skill uses keyword-based mode detection from the user's message:
 
 | Mode | Trigger keywords | Behaviour |
 |------|-----------------|-----------|
-| **Full workflow** | `/deeprefine`, "refine", "improve", "fix", "diagnose" | Full Reafiner loop for all pending queries; stops after dry-run review; asks for explicit approval before writing `graph.json` |
+| **Full workflow** | `/deeprefine`, "refine", "improve", "fix", "diagnose" | Full refinement loop for all pending queries; stops after dry-run review; asks for explicit approval before writing `graph.json` |
 | **Review only** | "review", "check", "audit", "inspect", "dry-run", "what would change" | Reads trace and refinement files; shows HIGH/MEDIUM/LOW evidence report; does not modify any files |
 | **Apply only** | "approve", "apply", "write", "go ahead", "proceed", "yes apply" | Runs `deeprefine apply` only after a prior review; requires explicit user approval in the current message |
 

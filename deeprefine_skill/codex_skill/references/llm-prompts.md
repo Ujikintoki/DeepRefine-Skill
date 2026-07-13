@@ -52,7 +52,7 @@ User:
 Interaction history: {interaction_history}
 ```
 
-Format `interaction_history` like Reafiner:
+Format `interaction_history` like DeepRefine:
 
 ```text
 Step1:

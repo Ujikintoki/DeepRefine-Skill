@@ -308,7 +308,7 @@ def uninstall_codex_skill(*, project: bool) -> bool:
     for dest in [
         dest_dir / _SKILL_MD_NAME,
         dest_dir / "agents" / _OPENAI_YAML_NAME,
-        dest_dir / _CODEX_REFERENCES_DIR / "reafiner-workflow.md",
+        dest_dir / _CODEX_REFERENCES_DIR / "deeprefine-workflow.md",
         dest_dir / _CODEX_REFERENCES_DIR / "llm-prompts.md",
         dest_dir / _CODEX_REFERENCES_DIR / "trace-and-commands.md",
         dest_dir / _CODEX_REFERENCES_DIR / _LEGACY_CODEX_AGENT_LOOP_REF_NAME,
@@ -374,7 +374,7 @@ def uninstall_claude_skill(*, project: bool) -> bool:
     removed = False
     for dest in [
         dest_dir / _SKILL_MD_NAME,
-        dest_dir / _CLAUDE_REFERENCES_DIR / "reafiner-workflow.md",
+        dest_dir / _CLAUDE_REFERENCES_DIR / "deeprefine-workflow.md",
         dest_dir / _CLAUDE_REFERENCES_DIR / "llm-prompts.md",
         dest_dir / _CLAUDE_REFERENCES_DIR / "trace-and-commands.md",
     ]:

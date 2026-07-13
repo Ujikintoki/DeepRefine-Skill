@@ -1,7 +1,7 @@
 ---
 name: deeprefine
 description: >-
-  Codex adapter for the DeepRefine agent-native Reafiner loop. Use when the
+  Codex adapter for the DeepRefine agent-native refinement loop. Use when the
   user invokes $deeprefine or /deeprefine, or asks to refine, diagnose, review,
   or apply changes to a Graphify / LLM-Wiki knowledge graph. Must follow the
   canonical DeepRefine skill rules and stop for review before graph writes.
@@ -12,8 +12,8 @@ description: >-
 This file is the Codex-specific entrypoint. It keeps the platform rules small
 and loads longer DeepRefine procedure details only when needed:
 
-- Full workflow, queue selection, Reafiner branch logic, and review rules:
-  [references/reafiner-workflow.md](references/reafiner-workflow.md)
+- Full workflow, queue selection, refinement branch logic, and review rules:
+  [references/deeprefine-workflow.md](references/deeprefine-workflow.md)
 - Verbatim judgement, abduction, and refinement prompts:
   [references/llm-prompts.md](references/llm-prompts.md)
 - Checklist, command sequence, trace schema, paths, and CLI mode:
@@ -88,7 +88,7 @@ graph.
 
 Follow the canonical reference in this order:
 
-1. `references/reafiner-workflow.md`
+1. `references/deeprefine-workflow.md`
 2. `references/llm-prompts.md` when producing tagged LLM outputs
 3. `references/trace-and-commands.md` when writing traces or running commands
 
@@ -116,7 +116,7 @@ reviewed refinement.
 
 Before applying, verify that the trace and refinement file match
 `references/trace-and-commands.md` and the review rules in
-`references/reafiner-workflow.md`. Then run:
+`references/deeprefine-workflow.md`. Then run:
 
 ```bash
 deeprefine loop validate --trace-file ... --refinement-file ...
@@ -156,8 +156,8 @@ If validation fails, fix the trace or rerun the missing step. Do not bypass with
 
 Keep this adapter concise. Load the smallest reference needed:
 
-- Full Reafiner pseudocode and safe review:
-  `references/reafiner-workflow.md`
+- Full refinement pseudocode and safe review:
+  `references/deeprefine-workflow.md`
 - Verbatim LLM prompts:
   `references/llm-prompts.md`
 - Required JSON shape, exact command sequence, and CLI/FAISS exception path:

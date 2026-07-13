@@ -9,7 +9,7 @@ from openai import OpenAI
 
 from atlas_rag.llm_generator import GenerationConfig, LLMGenerator
 from atlas_rag.vectorstore.embedding_model import Qwen3Emb
-from autorefiner.src.reafiner import Reafiner, RetrievalStepResult
+from autorefiner.src.deeprefine import DeepRefine, RetrievalStepResult
 
 from .adapter_graphify import (
     load_or_build_data,
@@ -117,7 +117,7 @@ def run_refine(
     )
     original_kg = data["KG"].copy()
 
-    reafiner = Reafiner(
+    deeprefine = DeepRefine(
         data=data,
         sentence_encoder=encoder,
         llm_generator=llm,
@@ -140,9 +140,9 @@ def run_refine(
             return
         if not apply:
             return
-        data["KG"] = reafiner.kg
+        data["KG"] = deeprefine.kg
         nonlocal raw
-        raw = sync_kg_to_graphify(raw, reafiner.kg)
+        raw = sync_kg_to_graphify(raw, deeprefine.kg)
         save_graphify_json(graph_path, raw, backup_path=backup_path)
         save_bundle(cache_pkl, raw, data)
         mark_refined(history_path, refined_ids)
@@ -153,7 +153,7 @@ def run_refine(
                 query = sample["query"]
                 qid = query_id(query, sample.get("id"))
                 print(f"\n=== [{qid}] {query}")
-                final_answer, _, refinement_result = reafiner.refine(query=query)
+                final_answer, _, refinement_result = deeprefine.refine(query=query)
                 record = refinement_to_jsonable(sample, final_answer, refinement_result)
                 log_f.write(json.dumps(record, ensure_ascii=False) + "\n")
                 log_f.flush()
@@ -192,8 +192,8 @@ def run_refine(
                     summary_rows[-1]["review_file"] = str(review_file)
                     summary_rows[-1]["mode"] = "apply" if apply else "dry-run"
                 print(
-                    f"  steps={n_steps}, nodes={reafiner.kg.number_of_nodes()}, "
-                    f"edges={reafiner.kg.number_of_edges()}"
+                    f"  steps={n_steps}, nodes={deeprefine.kg.number_of_nodes()}, "
+                    f"edges={deeprefine.kg.number_of_edges()}"
                 )
                 if action_file and review_file:
                     print(
@@ -202,15 +202,15 @@ def run_refine(
                     )
                 if not apply:
                     data["KG"] = original_kg.copy()
-                    reafiner.kg = data["KG"]
+                    deeprefine.kg = data["KG"]
     finally:
         _persist()
 
     return {
         "log_path": str(log_path),
         "graph_path": str(graph_path),
-        "nodes": reafiner.kg.number_of_nodes(),
-        "edges": reafiner.kg.number_of_edges(),
+        "nodes": deeprefine.kg.number_of_nodes(),
+        "edges": deeprefine.kg.number_of_edges(),
         "queries_processed": len(queries),
         "mode": "apply" if apply else "dry-run",
         "summary": summary_rows,
@@ -241,7 +241,7 @@ def refine_from_history(
 
     return run_refine(
         graph_path=paths["graph_json"],
-        cache_pkl=paths["reafiner_pkl"],
+        cache_pkl=paths["deeprefine_pkl"],
         backup_path=paths["graph_backup"],
         history_path=paths["history"],
         log_dir=paths["graphify_out"] / ".deeprefine",

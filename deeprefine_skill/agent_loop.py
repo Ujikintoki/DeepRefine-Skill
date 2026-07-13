@@ -1,4 +1,4 @@
-"""Validate agent-native Reafiner loop traces (same control flow as Reafiner.refine())."""
+"""Validate agent-native refinement loop traces (same control flow as DeepRefine.refine())."""
 from __future__ import annotations
 
 import json
@@ -74,7 +74,7 @@ def format_interaction_history_for_abduction(
     *,
     horizon: int = HISTORY_HORIZON_DEFAULT,
 ) -> str:
-    """Same layout as Reafiner._error_abduction."""
+    """Same layout as DeepRefine._error_abduction."""
     rows = interaction_history[-horizon:]
     parts: list[str] = []
     for i, result in enumerate(rows):
@@ -89,7 +89,7 @@ def format_interaction_history_for_abduction(
 
 
 def reafiner_early_exit(interaction_history: list[dict[str, Any]]) -> bool:
-    """Reafiner.refine(): len(history) <= 1 → no KG refinement."""
+    """DeepRefine.refine(): len(history) <= 1 → no KG refinement."""
     return len(interaction_history) <= 1
 
 
@@ -99,7 +99,7 @@ def reafiner_needs_refinement(interaction_history: list[dict[str, Any]]) -> bool
 
 def validate_trace(trace: dict[str, Any], *, refinement_text: str | None = None) -> list[str]:
     """
-    Return human-readable errors. Empty list means the trace matches Reafiner control flow.
+    Return human-readable errors. Empty list means the trace matches DeepRefine control flow.
     """
     errors: list[str] = []
     if trace.get("schema_version") != 1:
@@ -181,7 +181,7 @@ def validate_trace(trace: dict[str, Any], *, refinement_text: str | None = None)
     early = reafiner_early_exit(ih)
     trace_early = trace.get("early_exit")
     if trace_early is not None and trace_early != early:
-        errors.append(f"early_exit={trace_early} but Reafiner rule gives {early}")
+        errors.append(f"early_exit={trace_early} but DeepRefine rule gives {early}")
 
     if early:
         if not last.get("answerable"):
