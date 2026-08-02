@@ -1,4 +1,4 @@
----
+﻿---
 name: deeprefine
 description: >-
   Agent-native DeepRefine Reafiner loop — same control flow as Reafiner.refine(),
@@ -302,7 +302,7 @@ Use **last hop’s** `retrieved_subgraph` as `{triples_string}` (JSON list is OK
 Copy and tick each item in your final message:
 
 ```text
-[ ] Backup: graphify-out/.deeprefine/graph.json.bak
+[ ] Checkpoint timeline: each apply creates a new checkpoint (graph.checkpoint.<seq>.json, never overwritten)
 [ ] loop_trace_<id>.json created
 [ ] Step 1: graphify query executed (evidence in trace)
 [ ] Each step: <judge>Yes|No</judge> shown in chat
@@ -322,7 +322,7 @@ Copy and tick each item in your final message:
 ```bash
 # 0. KB project root; graphify-out/graph.json exists
 mkdir -p graphify-out/.deeprefine
-cp graphify-out/graph.json graphify-out/.deeprefine/graph.json.bak
+cp graphify-out/graph.json graphify-out/.deeprefine/graph.json.bak.1  # Initial baseline (each apply creates a per-run backup + post-state checkpoint)
 
 # 1. Sync graphify query memory to deeprefine history first.
 deeprefine history sync-memory
@@ -418,4 +418,59 @@ deeprefine refine --query "..."       # dry-run proposal only
 - `graphify-out/.deeprefine/refinement_results_*.jsonl`
 - `graphify-out/.deeprefine/proposed_refinement_review_*.md`
 - `graphify-out/.deeprefine/proposed_refinement_review_*.json`
-- `graphify-out/.deeprefine/graph.json.bak`
+- `graphify-out/.deeprefine/graph.json.bak.<seq>` — per-run pre-state backup (graph right before the <seq>-th apply)
+- `graphify-out/.deeprefine/checkpoints/graph.checkpoint.<seq>.json` — post-state checkpoint (full graph after each apply)
+- `graphify-out/.deeprefine/checkpoints.json` — checkpoint timeline registry
+
+## Checkpoint timeline (compare refinement chains)
+
+Every `deeprefine apply` writes the **full resulting graph** as a checkpoint
+on a single linear timeline (like git commits). The timeline is shared across
+all queries, and seq only ever increases, so no apply can overwrite an
+earlier state. Restoring is a graph-state switch that never deletes
+checkpoint files — instead it **resets every later checkpoint's query mark
+back to pending**, so you can refine them again to build a new timeline.
+
+Before each apply the current graph is snapshotted as
+`graph.json.bak.<seq>` (per-run pre-state backup), so together with the
+post-state checkpoint a single refinement can be undone *precisely*.
+
+An apply also marks the refined query as **done** in the history
+(`refined: true` + `refined_ts`), so `deeprefine refine` will not pick it up
+again while it stays in the timeline. Rollback / `--query` turn
+the affected marks back to pending, which is what makes them re-refinable.
+
+```bash
+# Show the whole timeline (seq, query, timestamp, refined/pending state)
+deeprefine rollback --list
+
+# Same timeline, grouped per query id as version chains (every time a query
+# was refined shows up as one version: e.g. q7: #9 -> #10 -> #17 -> #25 -> #30)
+deeprefine rollback --list --by-query
+
+# Switch graph.json to an exact earlier state; later query marks
+# return to pending so they can be refined again
+deeprefine rollback <seq>
+
+# Undo ONLY the last refinement of one query (by its id from the history):
+# graph.json returns to the per-run backup taken right before that apply
+# (or the previous checkpoint), and this query's + every later mark -> pending
+deeprefine rollback --query <query_id>
+```
+
+Typical flow for comparing two refinement chains:
+
+```bash
+# Chain A: q1 -> q2 -> q3  (checkpoints 1, 2, 3 — endpoint is #3)
+deeprefine apply --trace-file ... # q1
+deeprefine apply --trace-file ... # q2
+deeprefine apply --trace-file ... # q3
+
+# Go back to base, then run Chain B: q4 -> q5 -> q2 -> q3
+# (checkpoints 4..7 — endpoint is #7; seq keeps increasing, #1-#3 untouched)
+deeprefine rollback 1
+
+# Compare both endpoints whenever needed:
+deeprefine rollback 3   # Chain A final state
+deeprefine rollback 7   # Chain B final state
+```

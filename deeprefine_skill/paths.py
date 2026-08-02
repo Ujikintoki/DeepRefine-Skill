@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import time
 from pathlib import Path
 
 
@@ -63,7 +65,102 @@ def graphify_paths(project_root: Path) -> dict[str, Path]:
         "cache_dir": deep / "cache",
         "reafiner_pkl": deep / "cache" / "reafiner_data.pkl",
         "graph_backup": deep / "graph.json.bak",
+        "checkpoints_metadata": deep / "checkpoints.json",
     }
+
+
+def checkpoints_dir(project_root: Path) -> Path:
+    """Directory holding checkpoint graph snapshots (one file per global seq)."""
+    return project_root / "graphify-out" / ".deeprefine" / "checkpoints"
+
+
+def run_backup_path(project_root: Path, seq: int) -> Path:
+    """Per-run pre-state backup of graph.json: ``graph.json.bak.<seq>``.
+
+    Taken right before the ``seq``-th apply writes the graph, so together
+    with the post-state checkpoints it pins down exactly what changed in
+    that single refinement run. Used by ``rollback --query`` to undo ONE
+    refinement precisely instead of stepping back to a whole checkpoint.
+    """
+    return project_root / "graphify-out" / ".deeprefine" / f"graph.json.bak.{seq}"
+
+
+def checkpoint_path(project_root: Path, seq: int) -> Path:
+    """Return the checkpoint file path for a given global sequence number."""
+    return checkpoints_dir(project_root) / f"graph.checkpoint.{seq}.json"
+
+
+def checkpoints_metadata_path(project_root: Path) -> Path:
+    """Return the path to the checkpoint timeline metadata registry."""
+    return project_root / "graphify-out" / ".deeprefine" / "checkpoints.json"
+
+
+def load_checkpoint_metadata(path: Path) -> list[dict]:
+    """Load checkpoint timeline metadata. Returns empty list if file doesn't exist."""
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def save_checkpoint_metadata(path: Path, data: list[dict]) -> None:
+    """Atomically write checkpoint timeline metadata to JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
+def create_checkpoint(
+    graph_path: Path,
+    metadata_path: Path,
+    query_id: str = "",
+    query_text: str = "",
+) -> Path:
+    """Create a post-state checkpoint of graph.json after a refinement apply.
+
+    Checkpoints form a linear timeline (like git commits): every apply
+    writes the FULL resulting graph as graph.checkpoint.<seq>.json, with
+    seq monotonically increasing across ALL queries. Any checkpoint can
+    later be restored independently.
+
+    ``rollback <seq>`` restores a checkpoint AND resets the history marks
+    of every later checkpoint's query to pending, so those queries can be
+    refined again. Checkpoint files are always kept (rollback never deletes
+    them), so every state stays comparable.
+
+    Returns the checkpoint file path.
+    """
+    import shutil as _shutil
+
+    project_root = graph_path.parent.parent
+    meta = load_checkpoint_metadata(metadata_path)
+    seq = (meta[-1]["seq"] if meta and "seq" in meta[-1] else 0) + 1
+
+    dest = checkpoint_path(project_root, seq)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _shutil.copy2(graph_path, dest)
+
+    meta.append({
+        "seq": seq,
+        "query_id": query_id,
+        "query_text": query_text,
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "path": str(dest),
+    })
+    save_checkpoint_metadata(metadata_path, meta)
+    return dest
+
+
+def get_checkpoint_by_seq(meta: list[dict], seq: int) -> dict | None:
+    """Get a checkpoint entry by global seq."""
+    for c in meta:
+        if c.get("seq") == seq:
+            return c
+    return None
 
 
 def setup_import_paths(deeprefine_repo: Path) -> None:

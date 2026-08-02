@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -39,13 +40,20 @@ def _parse_frontmatter(text: str) -> dict[str, Any]:
 
 
 def _run_cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    """Run ``python -m deeprefine_skill.cli`` with given args."""
+    """Run ``python -m deeprefine_skill.cli`` with given args.
+
+    The package is not pip-installed in the test environment, so ``PYTHONPATH``
+    is set to the repo root to make it importable even when ``cwd`` is a
+    temporary project directory (installer tests).
+    """
     cmd = [sys.executable, "-m", "deeprefine_skill.cli", *args]
+    env = {**os.environ, "PYTHONPATH": str(REPO_ROOT)}
     return subprocess.run(
         cmd,
         text=True,
         cwd=str(cwd or REPO_ROOT),
         capture_output=True,
+        env=env,
     )
 
 

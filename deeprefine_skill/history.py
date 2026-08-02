@@ -48,7 +48,7 @@ def append_history(
 def iter_history(path: Path) -> Iterator[dict[str, Any]]:
     if not path.is_file():
         return
-    with path.open(encoding="utf-8") as f:
+    with path.open(encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -169,18 +169,47 @@ def sync_history_from_memory(history_path: Path, memory_dir: Path) -> dict[str, 
     return {"added": added, "known": len(existing_ids)}
 
 
-def mark_refined(path: Path, query_ids: set[str]) -> None:
+def mark_refined(path: Path, query_ids: set[str]) -> int:
+    """Mark the given queries as refined (pending -> done).
+
+    Only existing history rows are updated (refined: true + refined_ts);
+    queries with no matching row are ignored. Returns the number of rows
+    changed. Missing file / empty ids return 0.
+    """
     if not path.is_file() or not query_ids:
-        return
+        return 0
     rows: list[dict[str, Any]] = list(iter_history(path))
-    changed = False
+    changed = 0
     for row in rows:
         qid = row.get("id") or _line_id(row.get("query", ""))
         if qid in query_ids and not row.get("refined"):
             row["refined"] = True
             row["refined_ts"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            changed = True
+            changed += 1
     if changed:
         with path.open("w", encoding="utf-8") as f:
             for row in rows:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return changed
+
+
+def unmark_refined(path: Path, query_ids: set[str]) -> int:
+    """Reset the refined mark of the given queries back to pending.
+
+    Returns the number of rows changed. Missing file / empty ids return 0.
+    """
+    if not path.is_file() or not query_ids:
+        return 0
+    rows: list[dict[str, Any]] = list(iter_history(path))
+    changed = 0
+    for row in rows:
+        qid = row.get("id") or _line_id(row.get("query", ""))
+        if qid in query_ids and row.get("refined"):
+            row["refined"] = False
+            row.pop("refined_ts", None)
+            changed += 1
+    if changed:
+        with path.open("w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return changed
