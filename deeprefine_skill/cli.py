@@ -24,12 +24,14 @@ from deeprefine_skill.history import (
 from deeprefine_skill.installers import (
     copy_gemini_extension,
     gemini_extension_path,
+    install_claude_skill,
     install_codex_skill,
     install_copilot_skill,
     install_cursor_skill,
     install_gemini_extension,
     install_opencode_skill,
     link_gemini_extension,
+    uninstall_claude_skill,
     uninstall_codex_skill,
     uninstall_copilot_skill,
     uninstall_cursor_skill,
@@ -131,6 +133,31 @@ def cmd_codex_uninstall(args: argparse.Namespace) -> int:
     if removed:
         scope = "project" if args.project else "user"
         print(f"Removed DeepRefine Codex skill ({scope}).")
+    else:
+        print("Skill not installed at the selected scope.")
+    return 0
+
+# ---------------------------------------------------------------------------
+# Claude Code handlers
+# ---------------------------------------------------------------------------
+
+
+def cmd_claude_install(args: argparse.Namespace) -> int:
+    """``deeprefine claude install`` - install SKILL.md for Claude Code."""
+    dest = install_claude_skill(project=args.project)
+    scope = "project" if args.project else "user"
+    print(f"Installed DeepRefine Claude Code skill ({scope}) -> {dest}")
+    if args.project:
+        print("Restart Claude Code, then invoke /deeprefine.")
+    return 0
+
+
+def cmd_claude_uninstall(args: argparse.Namespace) -> int:
+    """``deeprefine claude uninstall`` - remove the Claude Code skill."""
+    removed = uninstall_claude_skill(project=args.project)
+    if removed:
+        scope = "project" if args.project else "user"
+        print(f"Removed DeepRefine Claude Code skill ({scope}).")
     else:
         print("Skill not installed at the selected scope.")
     return 0
@@ -301,11 +328,11 @@ def cmd_index(args: argparse.Namespace) -> int:
     del llm
     load_or_build_data(
         paths["graph_json"],
-        paths["reafiner_pkl"],
+        paths["deeprefine_pkl"],
         encoder,
         rebuild=True,
     )
-    print(f"Index cache: {paths['reafiner_pkl']}")
+    print(f"Index cache: {paths['deeprefine_pkl']}")
     return 0
 
 
@@ -346,7 +373,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         errs = validate_trace(trace, refinement_text=text)
         if errs:
             print(
-                "Loop trace validation failed (must match Reafiner.refine()):",
+                "Loop trace validation failed (must match DeepRefine.refine()):",
                 file=sys.stderr,
             )
             for e in errs:
@@ -381,17 +408,46 @@ def cmd_apply(args: argparse.Namespace) -> int:
     if paths["graph_json"].is_file():
         backup.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(paths["graph_json"], backup)
-
     qid = ""
     qtext = ""
     if not getattr(args, "skip_trace_check", False) and args.trace_file:
         qid = trace.get("query_id", "")
         qtext = trace.get("query", "")
 
-    changes = __import__(
-        "deeprefine_skill.agent_graph", fromlist=["apply_refinement_text"]
-    ).apply_refinement_text(paths["graph_json"], text)
-    print(f"Applied {len(changes)} action(s) to {paths['graph_json']}")
+    if getattr(args, "refresh_wiki", False):
+        from deeprefine_skill.wiki_refresh import (
+            WikiRefreshError,
+            apply_refinement_with_wiki_refresh,
+        )
+
+        try:
+            result = apply_refinement_with_wiki_refresh(
+                graph_path=paths["graph_json"],
+                refinement_text=text,
+                project_root=project,
+            )
+        except WikiRefreshError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(
+                "Failed to commit graph.json and Wiki together; the transaction "
+                f"was rolled back where possible: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        changes = result.changes
+        if result.stdout.strip():
+            print(result.stdout.strip())
+        print(
+            f"Applied {len(changes)} action(s) to {paths['graph_json']} "
+            f"and refreshed {result.wiki_dir}"
+        )
+    else:
+        changes = __import__(
+            "deeprefine_skill.agent_graph", fromlist=["apply_refinement_text"]
+        ).apply_refinement_text(paths["graph_json"], text)
+        print(f"Applied {len(changes)} action(s) to {paths['graph_json']}")
     for c in changes:
         print(f"  - {c}")
 
@@ -515,11 +571,11 @@ def cmd_loop_validate(args: argparse.Namespace) -> int:
             refinement_text = Path(ref).read_text(encoding="utf-8")
     errs = validate_trace(load_trace(trace_path), refinement_text=refinement_text)
     if errs:
-        print("INVALID — does not match Reafiner.refine() control flow:")
+        print("INVALID — does not match DeepRefine.refine() control flow:")
         for e in errs:
             print(f"  - {e}")
         return 1
-    print("OK — loop trace matches Reafiner.refine() rules.")
+    print("OK — loop trace matches DeepRefine.refine() rules.")
     return 0
 
 
@@ -933,6 +989,33 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_codu.set_defaults(func=cmd_codex_uninstall, _default_project=True)
 
+    # deeprefine claude install | uninstall
+    p_claude = sub.add_parser("claude", help="Claude Code skill integration")
+    claude_sub = p_claude.add_subparsers(dest="claude_cmd", required=True)
+
+    p_cli_i = claude_sub.add_parser(
+        "install", help="Install /deeprefine skill for Claude Code"
+    )
+    _add_project_flag(
+        p_cli_i,
+        project_help=(
+            "Install to .claude/skills/deeprefine in the current directory "
+            "(default for claude install)"
+        ),
+        user_help="Install to ~/.claude/skills/deeprefine (all projects)",
+    )
+    p_cli_i.set_defaults(func=cmd_claude_install, _default_project=True)
+
+    p_cli_u = claude_sub.add_parser("uninstall", help="Remove Claude Code skill")
+    _add_project_flag(
+        p_cli_u,
+        project_help=(
+            "Remove from .claude/skills/deeprefine in the current directory "
+            "(default for claude uninstall)"
+        ),
+        user_help="Remove from ~/.claude/skills/deeprefine (all projects)",
+    )
+    p_cli_u.set_defaults(func=cmd_claude_uninstall, _default_project=True)
     # deeprefine opencode install | uninstall
     p_opencode = sub.add_parser("opencode", help="OpenCode IDE integration")
     opencode_sub = p_opencode.add_subparsers(dest="opencode_cmd", required=True)
@@ -1103,7 +1186,7 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument(
         "--trace-file",
         required=False,
-        help="loop_trace_<id>.json — validated against Reafiner.refine() before apply",
+        help="loop_trace_<id>.json — validated against DeepRefine.refine() before apply",
     )
     p_apply.add_argument(
         "--skip-trace-check",
@@ -1115,17 +1198,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Apply even when the review contains LOW-confidence actions.",
     )
+    p_apply.add_argument(
+        "--refresh-wiki",
+        action="store_true",
+        help=(
+            "Regenerate graphify-out/wiki from the refined graph and commit the "
+            "graph + Wiki together; leave both unchanged if refresh fails."
+        ),
+    )
     p_apply.add_argument("--project-root", default=None)
     p_apply.set_defaults(func=cmd_apply)
 
-    p_loop = sub.add_parser("loop", help="Agent Reafiner loop trace (no FAISS)")
+    p_loop = sub.add_parser("loop", help="Agent refinement loop trace (no FAISS)")
     loop_sub = p_loop.add_subparsers(dest="loop_cmd", required=True)
     p_li = loop_sub.add_parser("init", help="Create loop_trace_<id>.json template")
     p_li.add_argument("--query", required=True)
     p_li.add_argument("--trace-file", default=None)
     p_li.set_defaults(func=cmd_loop_init)
     p_lv = loop_sub.add_parser(
-        "validate", help="Check trace matches Reafiner control flow"
+        "validate", help="Check trace matches DeepRefine control flow"
     )
     p_lv.add_argument("--trace-file", required=True)
     p_lv.add_argument("--refinement-file", default=None)

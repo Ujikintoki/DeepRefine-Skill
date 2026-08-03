@@ -8,7 +8,7 @@ CLI command sequence.
 Report these items in chat for each query:
 
 ```text
-[ ] Checkpoint timeline: each apply creates graph.checkpoint.<seq>.json + per-run backup graph.json.bak.<seq>
+[ ] Backup: graphify-out/.deeprefine/graph.json.bak
 [ ] loop_trace_<id>.json created
 [ ] Step 1: graphify query executed (evidence in trace)
 [ ] Each step: <judge>Yes|No</judge> shown in chat
@@ -26,7 +26,7 @@ Report these items in chat for each query:
 ```bash
 # 0. KB project root; graphify-out/graph.json exists
 mkdir -p graphify-out/.deeprefine
-cp graphify-out/graph.json graphify-out/.deeprefine/graph.json.bak  # Initial baseline (per-query snapshots created automatically)
+cp graphify-out/graph.json graphify-out/.deeprefine/graph.json.bak
 
 # 1. Sync graphify query memory to deeprefine history first.
 deeprefine history sync-memory
@@ -122,23 +122,4 @@ deeprefine refine --query "..."       # dry-run proposal only
 - `graphify-out/.deeprefine/refinement_results_*.jsonl`
 - `graphify-out/.deeprefine/proposed_refinement_review_*.md`
 - `graphify-out/.deeprefine/proposed_refinement_review_*.json`
-- `graphify-out/.deeprefine/graph.json.bak` — initial baseline backup
-- `graphify-out/.deeprefine/graph.json.bak.<seq>` — per-run pre-state backup (taken before the <seq>-th apply)
-- `graphify-out/.deeprefine/checkpoints/graph.checkpoint.<seq>.json` — post-state graph after each apply
-- `graphify-out/.deeprefine/checkpoints.json` — checkpoint timeline registry
-
-## Rollback
-
-```bash
-# List the checkpoint timeline (seq, timestamp, query id, refined/pending state)
-deeprefine rollback --list
-
-# Same timeline, grouped per query id as version chains
-deeprefine rollback --list --by-query
-
-# Roll back graph.json to checkpoint <seq> and reset later query marks to pending
-deeprefine rollback <seq>
-
-# Undo the LAST refinement of one query precisely (per-run backup or previous checkpoint)
-deeprefine rollback --query <query_id>
-```
+- `graphify-out/.deeprefine/graph.json.bak`

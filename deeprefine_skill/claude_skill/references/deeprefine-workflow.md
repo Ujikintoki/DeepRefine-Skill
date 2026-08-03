@@ -1,10 +1,10 @@
-# DeepRefine Reafiner Workflow
+# DeepRefine Agent Workflow
 
-Use this reference for the full `$deeprefine` / `/deeprefine` workflow.
+Use this reference for the full `/deeprefine` workflow.
 
 ## Safety Policy
 
-A normal `$deeprefine` or `/deeprefine` invocation must stop after:
+A normal `/deeprefine` invocation must stop after:
 
 1. `deeprefine loop validate`
 2. `deeprefine review`
@@ -65,7 +65,7 @@ approved apply.
 
 ## Query Queue Selection
 
-Default `$deeprefine` must process all unrefined history queries first, not only
+Default `/deeprefine` must process all unrefined history queries first, not only
 the latest query.
 
 1. Run `deeprefine history sync-memory`.
@@ -78,7 +78,7 @@ the latest query.
 
 ## Control Flow
 
-Follow the same branch structure as `Reafiner.refine()`.
+Follow the same branch structure as `DeepRefine.refine()`.
 
 ```text
 target_queries = pending_history_queries()

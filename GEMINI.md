@@ -7,7 +7,7 @@ Use the `deeprefine` skill when the user asks to refine, diagnose, debug, improv
 ## Core behavior
 
 1. Prefer the agent-native DeepRefine loop over the terminal-only `deeprefine refine` command unless the user explicitly requests CLI / FAISS mode.
-2. Follow the same control flow as `Reafiner.refine()` from DeepRefine.
+2. Follow the same control flow as `DeepRefine.refine()` from DeepRefine.
 3. Import Graphify memory with `deeprefine history sync-memory` when running the default queue workflow.
 4. Process pending history entries one by one.
 5. Use Graphify query results and k-hop expansion over `graphify-out/graph.json` as retrieval evidence.

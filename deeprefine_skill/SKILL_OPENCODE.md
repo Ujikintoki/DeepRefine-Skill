@@ -6,7 +6,7 @@ compatibility:
   - opencode
 ---
 
-# DeepRefine — Agent Reafiner loop (OpenCode optimized)
+# DeepRefine — Agent refinement loop (OpenCode optimized)
 
 ## Default safety policy: dry-run only
 
@@ -46,7 +46,7 @@ This harness leverages 6 OpenCode platform capabilities unavailable in Cursor or
 
 ---
 
-You **MUST** implement the **same control flow** as `Reafiner.refine()` in DeepRefine (`autorefiner/src/reafiner.py`).
+You **MUST** implement the **same control flow** as `DeepRefine.refine()` in DeepRefine (`autorefiner/src/deeprefine.py`).
 
 | Component | Agent mode | CLI `deeprefine refine` |
 |-----------|------------|-------------------------|
@@ -91,7 +91,7 @@ If validation fails, **fix the trace and re-run the missing step** — do not by
 
 ---
 
-## Constants (match `refine_runner.py` / Reafiner)
+## Constants (match `refine_runner.py` / DeepRefine)
 
 ```text
 MAX_HOPS = 4
@@ -178,7 +178,7 @@ For EACH question in target_queries, launch a parallel subagent:
                Do NOT launch any subagents. Do NOT review. Just save and return.")
 ```
 
-Each subagent independently runs the core Reafiner loop (query → judge → k-hop → abduction → refinement → save file). For early-exit queries, finish immediately. For refinement-path queries, save the actions file and return.
+Each subagent independently runs the core refinement loop (query → judge → k-hop → abduction → refinement → save file). For early-exit queries, finish immediately. For refinement-path queries, save the actions file and return.
 
 **Stage 2 — Centralized Oracle review (main agent collects files, launches reviews):** After ALL Stage 1 subagents complete, the main agent collects all generated refinement_actions_*.txt files. For EACH file, launch 5 oracle reviews (see "5-Oracle parallel review" section). Oracles read the file and return APPROVE/REJECT.
 
@@ -188,7 +188,7 @@ Do NOT make sub-agents call task() — always launch oracles from the main agent
 
 ---
 
-## Control flow (must match `Reafiner.refine()`)
+## Control flow (must match `DeepRefine.refine()`)
 
 Pseudocode — follow **exactly**:
 
@@ -239,7 +239,7 @@ Within each subagent, for its assigned question (Stage 1 ONLY — query → refi
         if answerable:
             BREAK   # stop hop loop
 
-    # --- same branch as Reafiner.refine() line 314+ ---
+    # --- same branch as DeepRefine.refine() line 314+ ---
     if len(interaction_history) <= 1:
         # Early exit: first hop was answerable — NO graph refinement
         set trace.early_exit = true
@@ -313,7 +313,7 @@ if any oracle returned REJECT and user has not explicitly overridden:
     Do NOT apply until user decision
 ```
 
-**Critical Reafiner rule:** refinement runs when `len(interaction_history) > 1`, not only when all judgements are `No`.
+**Critical refinement rule:** refinement runs when `len(interaction_history) > 1`, not only when all judgements are `No`.
 
 **Safe-review rule:** a refinement path is dry-run by default. Generating `<refinement>` actions is not approval to write `graph.json`, and a normal `/deeprefine` turn must end after `deeprefine review`.
 
@@ -430,7 +430,7 @@ Analyze the reasons of the unanswerable questions based on the given interaction
 Interaction history: {interaction_history}
 ```
 
-`{interaction_history}` format (same as Reafiner):
+`{interaction_history}` format (same as DeepRefine):
 
 ```text
 Step1:

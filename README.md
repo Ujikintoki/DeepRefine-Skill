@@ -18,14 +18,14 @@
 </tr>
 </table>
 
-[![PyPi](https://img.shields.io/badge/PyPi-v0.1.9-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.9/)
-[![Python](https://img.shields.io/badge/Python-3.10,3.11,3.12-blue.svg)](https://pypi.org/project/deeprefine-cli/0.1.9/)
+[![PyPi](https://img.shields.io/badge/PyPi-v0.2.0-blue.svg)](https://pypi.org/project/deeprefine-cli/0.2.0/)
+[![Python](https://img.shields.io/badge/Python-3.10,3.11,3.12-blue.svg)](https://pypi.org/project/deeprefine-cli/0.2.0/)
 [![Paper](https://img.shields.io/badge/Paper-DeepRefine-b31b1b.svg)](https://arxiv.org/pdf/2605.10488)
 [![Project](https://img.shields.io/badge/Project-DeepRefine-green.svg)](https://github.com/HKUST-KnowComp/DeepRefine)
 
 </div>
 
-DeepRefine-Skill plugs into agent workflows and use a single command `/deeprefine` in your agent (Cursor, Copilot CLI, Gemini CLI, Codex, OpenCode) to refine and evolve your LLM-Wiki (e.g., **[graphify](https://github.com/safishamsi/graphify)**) knowledge base.
+DeepRefine-Skill plugs into agent workflows and use a single command `/deeprefine` in your agent (Cursor, Copilot CLI, Gemini CLI, Codex, OpenCode, Claude Code) to refine and evolve your LLM-Wiki (e.g., **[graphify](https://github.com/safishamsi/graphify)**) knowledge base.
 
 <p align="center">
 <img src="assets/demo-typing-deeprefine.svg" alt="Demo: /deeprefine" />
@@ -40,11 +40,14 @@ Supported agent frameworks:
   <a href="https://github.com/google-gemini/gemini-cli" title="Gemini CLI"><img src="./assets/gemini-cli-icon_full-color@4x.png" alt="Gemini CLI" height="40"/></a>&nbsp;&nbsp;
   <a href="https://docs.github.com/en/copilot" title="GitHub Copilot CLI" style="text-decoration: none; color: inherit;"><img src="./assets/github-copilot__1_-removebg-preview.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
   <a href="https://openai.com/codex/" title="Codex CLI" style="text-decoration: none; color: inherit;"><img src="./assets/codex-color.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
+  <a href="https://opencode.ai/" title="OpenCode" style="text-decoration: none; color: inherit;"><img src="./assets/opencode-logo-dark.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
+  <a href="https://claude.com/product/claude-code" title="Claude Code" style="text-decoration: none; color: inherit;"><img src="./assets/claudecode-color.png" height="40" style="vertical-align: middle;" alt="Copilot Icon" /></a>&nbsp;&nbsp;
 </p>
 
 ---
 
 ## News
+- **[2026/7/10] v0.2.0** - Claude Code and OpenCode adapters: `deeprefine claude install` / `deeprefine opencode install`, bundled skill + command templates.
 - **[2026/7/3] v0.1.9** -  Release with Codex, Copilot CLI, and Gemini CLI skills bundled; dry-run-first refinement, evidence-aware action review (HIGH/MEDIUM/LOW), ambiguous-node warnings, and LOW-confidence apply guard.
 - **[2026/6/24] v0.1.9** - Codex skill supported.
 - **[2026/6/18] v0.1.9** - Gemini CLI and Copilot CLI supported.
@@ -72,6 +75,10 @@ deeprefine copilot install
 deeprefine gemini install # or deeprefine gemini link
 # for Codex
 deeprefine codex install
+# for Claude Code
+deeprefine claude install
+# for OpenCode
+deeprefine opencode install
 ```
 
 After upgrading the package, run the command again to refresh local skill files.
@@ -100,7 +107,7 @@ When you run `/deeprefine`, it should follow this order:
 3. refine pending queries sequentially
 4. for refinement-path queries, generate `<refinement>` actions and run `deeprefine review`
 5. stop in dry-run mode and show the review report; do **not** modify `graph.json` yet
-6. only after user approval, run `deeprefine apply` and then `deeprefine loop finish`
+6. only after user approval, run `deeprefine apply --refresh-wiki` and then `deeprefine loop finish`
 
 </details>
 
@@ -138,6 +145,12 @@ Run from your KB project root.
 | `deeprefine codex install` | Install `$deeprefine` skill for Codex (`.agents/skills/deeprefine/`) |
 | `deeprefine codex install --user` | Install Codex skill for all projects (`~/.codex/skills/deeprefine/`) |
 | `deeprefine codex uninstall` | Remove Codex skill |
+| `deeprefine claude install` | Install `/deeprefine` skill for Claude Code (`.claude/skills/deeprefine/`) |
+| `deeprefine claude install --user` | Install Claude Code skill for all projects (`~/.claude/skills/deeprefine/`) |
+| `deeprefine claude uninstall` | Remove the Claude Code skill |
+| `deeprefine opencode install` | Install `/deeprefine` skill + commands for OpenCode (`.opencode/`) |
+| `deeprefine opencode install --user` | Install OpenCode skill for all projects (`~/.opencode/`) |
+| `deeprefine opencode uninstall` | Remove the OpenCode skill and commands |
 | `deeprefine gemini path` | Print the extension root used for Gemini CLI |
 | `deeprefine gemini link` | Link the current source checkout with `gemini extensions link` |
 | `deeprefine gemini install` | Install the bundled extension with `gemini extensions install` |
@@ -146,10 +159,10 @@ Run from your KB project root.
 | `deeprefine history sync-memory` | Import `graphify-out/memory/query_*.md` into DeepRefine history |
 | `deeprefine history list --pending` | Show unrefined queue |
 | `deeprefine loop init --query "..."` | Create `loop_trace_<id>.json` template |
-| `deeprefine loop validate --trace-file T` | Validate trace against Reafiner control flow |
+| `deeprefine loop validate --trace-file T` | Validate trace against DeepRefine control flow |
 | `deeprefine review --trace-file T --refinement-file F` | Review proposed actions with HIGH/MEDIUM/LOW evidence labels; no graph write |
-| `deeprefine apply --trace-file T --refinement-file F` | Apply `<refinement>` actions to `graph.json` after approval; refuses LOW by default |
-| `deeprefine apply --allow-low-confidence --trace-file T --refinement-file F` | Override LOW-confidence guard explicitly |
+| `deeprefine apply --refresh-wiki --trace-file T --refinement-file F` | Apply actions and regenerate `graphify-out/wiki` from the refined graph; graph + Wiki are committed together |
+| `deeprefine apply --refresh-wiki --allow-low-confidence --trace-file T --refinement-file F` | Refresh the Wiki while explicitly overriding the LOW-confidence guard |
 | `deeprefine loop finish --trace-file T [--refinement-file F]` | Persist results and mark history refined |
 
 ### Evidence-aware review and safe apply
@@ -171,6 +184,8 @@ GOOD: insert_edge("pretraining/pretraining_CLIP_fine-grained.py::main()", "calls
 
 `deeprefine apply` refuses LOW-confidence actions by default. Use `--allow-low-confidence` only when the user explicitly accepts the risk.
 
+When the knowledge base was created with Graphify Wiki output, use `--refresh-wiki`. DeepRefine stages the refined graph, regenerates the Wiki with `graphify export wiki`, validates `wiki/index.md`, and only then replaces the production graph and Wiki. If export fails, the existing graph and Wiki remain unchanged.
+
 ---
 
 ## Codex Integration
@@ -181,7 +196,7 @@ GOOD: insert_edge("pretraining/pretraining_CLIP_fine-grained.py::main()", "calls
 DeepRefine works as a Codex skill. The installer writes the Codex-specific
 skill file to `.agents/skills/deeprefine/SKILL.md` and UI metadata to
 `.agents/skills/deeprefine/agents/openai.yaml`. It also installs focused
-references under `.agents/skills/deeprefine/references/` for the Reafiner
+references under `.agents/skills/deeprefine/references/` for the refinement
 workflow, LLM prompts, and trace/command details.
 
 ### One-time setup
@@ -214,7 +229,7 @@ $deeprefine
 $deeprefine
 ```
 
-Codex runs the full agent-native Reafiner loop for pending queries, stops after
+Codex runs the full agent-native refinement loop for pending queries, stops after
 `deeprefine review`, and presents the HIGH/MEDIUM/LOW report. Reply with an
 explicit apply/approve message only after reviewing the proposed actions.
 
@@ -256,7 +271,7 @@ keyword-based mode detection in the SKILL.md preamble:
 
 | Mode | Trigger keywords | Behavior |
 |------|-----------------|----------|
-| **Full workflow** | `/deeprefine`, "refine", "improve", "fix" | Full Reafiner loop; stops after dry-run review; asks for approval |
+| **Full workflow** | `/deeprefine`, "refine", "improve", "fix" | Full refinement loop; stops after dry-run review; asks for approval |
 | **Review only** | "review", "check", "audit", "inspect", "dry-run" | Reads trace + refinement file; shows HIGH/MEDIUM/LOW report; no graph writes |
 | **Apply only** | "approve", "apply", "write", "go ahead" | Runs `deeprefine apply` only after a prior review; requires explicit user approval in the current message |
 
@@ -266,7 +281,7 @@ keyword-based mode detection in the SKILL.md preamble:
 /deeprefine
 ```
 
-The agent runs the full Reafiner loop for all pending queries.  For
+The agent runs the full refinement loop for all pending queries.  For
 refinement-path queries, it stops after the dry-run review and asks:
 
 ```text
@@ -357,6 +372,123 @@ The extension files are located at the repository root and are also bundled unde
 
 </details>
 
+## OpenCode Integration
+
+<details>
+<summary><strong>Setup, commands, and session usage</strong></summary>
+
+### Prerequisites
+
+- **OpenCode CLI** installed and configured
+- **graphify** CLI available on your PATH
+- **Python 3.10+** with `deeprefine-cli` installed
+- A `graphify-out/graph.json` knowledge graph in your project
+
+### Setup
+
+```bash
+# Install into the current project
+deeprefine opencode install --project
+
+# Install globally (all projects)
+deeprefine opencode install --user
+```
+
+This installs **4 files**:
+
+| Destination | Source | Purpose |
+|------------|--------|---------|
+| `.opencode/skills/deeprefine/SKILL.md` | `SKILL_OPENCODE.md` | Agent harness with 6 OpenCode-native optimizations |
+| `.opencode/commands/deeprefine.md` | `commands/opencode/deeprefine.md` | Full workflow entrypoint (`/deeprefine`) |
+| `.opencode/commands/deeprefine-review.md` | `commands/opencode/deeprefine-review.md` | Review-only entrypoint (`/deeprefine-review`) |
+| `.opencode/commands/deeprefine-apply.md` | `commands/opencode/deeprefine-apply.md` | Apply-only entrypoint (`/deeprefine-apply`) |
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/deeprefine` | Full pipeline: sync → judge → abduction → refinement → 5-Oracle review → (await approval) → apply → post-apply verify |
+| `/deeprefine-review` | Review only: read existing actions → 5-Oracle audit → evidence review → present results |
+| `/deeprefine-apply` | Apply only: read reviewed actions → confirm → apply → post-apply verify → finish |
+
+### Model Configuration
+
+OpenCode supports per-phase model routing via environment variables:
+
+| Variable | Phase | Purpose |
+|----------|-------|---------|
+| `DEEPREFINE_JUDGE_MODEL` | Judgement (`<judge>Yes/No</judge>`) | Fast, cheap model for binary classification (e.g., `gpt-4o-mini`) |
+| `DEEPREFINE_REFINE_MODEL` | Abduction + Refinement | Strong reasoning model for complex causal analysis (e.g., `claude-sonnet-4-20250514`) |
+
+If either variable is unset, the session default model is used.
+
+### OpenCode-Native Optimizations
+
+DeepRefine on OpenCode includes 6 platform-native optimizations not available in Cursor or Cline:
+
+1. **Parallel query processing** — Multiple pending queries are dispatched to parallel subagents via `task()`, reducing wall-clock time to ~1 query's duration
+2. **Phase-specific model routing** — Binary judgement uses a cheap model; complex abduction/refinement uses a strong model
+3. **Structured progress tracking** — `todowrite()` replaces text checklists, enabling real-time progress visibility and cross-session resumption
+4. **5-Oracle parallel review** — Five specialized oracle subagents audit refinement actions from orthogonal angles (completeness, correctness, safety, consistency, edge-cases) before any graph mutation
+5. **Post-apply auto-verification** — After applying refinement actions, the original query is re-run to confirm the graph fix actually resolved the issue
+6. **Evidence ledger** — Every phase boundary writes a structured JSONL entry (`graphify-out/.deeprefine/ledger.jsonl`) with timestamps, artifacts, and QA results for full auditability
+
+### Uninstall
+
+```bash
+deeprefine opencode uninstall --project
+```
+</details>
+
+
+---
+
+## Claude Code Integration
+
+<details>
+<summary><strong>Setup, commands, and session usage</strong></summary>
+
+DeepRefine works as a Claude Code Agent Skill. The installer writes the
+Claude-specific skill file to `.claude/skills/deeprefine/SKILL.md`, along with
+independently maintained references under
+`.claude/skills/deeprefine/references/` for the refinement workflow, LLM
+prompts, and trace/command details.
+
+### One-time setup
+
+```bash
+cd /path/to/your-kb-project
+pip install deeprefine-cli
+deeprefine claude install --project
+```
+
+After upgrading the package, run `deeprefine claude install --project` again
+to refresh the local skill files. Restart Claude Code, then invoke:
+
+```text
+/deeprefine
+```
+
+### Claude Code commands
+
+| Command | Description |
+|---------|-------------|
+| `deeprefine claude install` | Install the Claude Code skill into `.claude/skills/deeprefine/` |
+| `deeprefine claude install --user` | Install the Claude Code skill into `~/.claude/skills/deeprefine/` |
+| `deeprefine claude uninstall` | Remove the Claude Code skill |
+
+### Claude Code session
+
+```text
+/deeprefine
+```
+
+Claude Code runs the full refinement loop for pending queries, stops after
+`deeprefine review`, and presents the HIGH/MEDIUM/LOW report. Reply with an
+explicit apply/approve message only after reviewing the proposed actions.
+
+</details>
+
 ---
 
 ## Terminal CLI (FAISS + API/vLLM)
@@ -424,82 +556,16 @@ deeprefine refine          # dry-run by default
 
 
 
-## OpenCode Integration
-
-### Prerequisites
-
-- **OpenCode CLI** installed and configured
-- **graphify** CLI available on your PATH
-- **Python 3.10+** with `deeprefine-cli` installed
-- A `graphify-out/graph.json` knowledge graph in your project
-
-### Setup
-
-```bash
-# Install into the current project
-deeprefine opencode install --project
-
-# Install globally (all projects)
-deeprefine opencode install --user
-```
-
-This installs **4 files**:
-
-| Destination | Source | Purpose |
-|------------|--------|---------|
-| `.opencode/skills/deeprefine/SKILL.md` | `SKILL_OPENCODE.md` | Agent harness with 6 OpenCode-native optimizations |
-| `.opencode/commands/deeprefine.md` | `commands/opencode/deeprefine.md` | Full workflow entrypoint (`/deeprefine`) |
-| `.opencode/commands/deeprefine-review.md` | `commands/opencode/deeprefine-review.md` | Review-only entrypoint (`/deeprefine-review`) |
-| `.opencode/commands/deeprefine-apply.md` | `commands/opencode/deeprefine-apply.md` | Apply-only entrypoint (`/deeprefine-apply`) |
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `/deeprefine` | Full pipeline: sync → judge → abduction → refinement → 5-Oracle review → (await approval) → apply → post-apply verify |
-| `/deeprefine-review` | Review only: read existing actions → 5-Oracle audit → evidence review → present results |
-| `/deeprefine-apply` | Apply only: read reviewed actions → confirm → apply → post-apply verify → finish |
-
-### Model Configuration
-
-OpenCode supports per-phase model routing via environment variables:
-
-| Variable | Phase | Purpose |
-|----------|-------|---------|
-| `DEEPREFINE_JUDGE_MODEL` | Judgement (`<judge>Yes/No</judge>`) | Fast, cheap model for binary classification (e.g., `gpt-4o-mini`) |
-| `DEEPREFINE_REFINE_MODEL` | Abduction + Refinement | Strong reasoning model for complex causal analysis (e.g., `claude-sonnet-4-20250514`) |
-
-If either variable is unset, the session default model is used.
-
-### OpenCode-Native Optimizations
-
-DeepRefine on OpenCode includes 6 platform-native optimizations not available in Cursor or Cline:
-
-1. **Parallel query processing** — Multiple pending queries are dispatched to parallel subagents via `task()`, reducing wall-clock time to ~1 query's duration
-2. **Phase-specific model routing** — Binary judgement uses a cheap model; complex abduction/refinement uses a strong model
-3. **Structured progress tracking** — `todowrite()` replaces text checklists, enabling real-time progress visibility and cross-session resumption
-4. **5-Oracle parallel review** — Five specialized oracle subagents audit refinement actions from orthogonal angles (completeness, correctness, safety, consistency, edge-cases) before any graph mutation
-5. **Post-apply auto-verification** — After applying refinement actions, the original query is re-run to confirm the graph fix actually resolved the issue
-6. **Evidence ledger** — Every phase boundary writes a structured JSONL entry (`graphify-out/.deeprefine/ledger.jsonl`) with timestamps, artifacts, and QA results for full auditability
-
-### Uninstall
-
-```bash
-deeprefine opencode uninstall --project
-```
-
-
-
 ## Installation
 
 | Method | Command |
 |--------|---------|
-| **PyPI** | `pip install deeprefine-cli==0.1.9` |
+| **PyPI** | `pip install deeprefine-cli==0.2.0` |
 | **Source** | `pip install -e /path/to/DeepRefine-Skill` |
 
 ```bash
 deeprefine --help
-# Expect: cursor, copilot, codex, opencode, gemini, history, index, refine, review, apply, loop
+# Expect: cursor, copilot, codex, claude, opencode, gemini, history, index, refine, review, apply, loop
 ```
 </details>
 

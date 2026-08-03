@@ -1,16 +1,18 @@
 ---
 name: deeprefine
 description: >-
-  Codex adapter for the DeepRefine agent-native refinement loop. Use when the
-  user invokes $deeprefine or /deeprefine, or asks to refine, diagnose, review,
-  or apply changes to a Graphify / LLM-Wiki knowledge graph. Must follow the
-  canonical DeepRefine skill rules and stop for review before graph writes.
+  Claude Code adapter for the DeepRefine agent-native refinement loop. Use when
+  the user invokes /deeprefine, or asks to refine, diagnose, review, or apply
+  changes to a Graphify / LLM-Wiki knowledge graph. Must follow the canonical
+  DeepRefine skill rules and stop for review before graph writes.
+allowed-tools: Bash(deeprefine *), Read, Grep, Glob
+disable-model-invocation: false
 ---
 
-# DeepRefine - Codex Adapter
+# DeepRefine - Claude Code Adapter
 
-This file is the Codex-specific entrypoint. It keeps the platform rules small
-and loads longer DeepRefine procedure details only when needed:
+This file is the Claude Code-specific entrypoint. It keeps the platform rules
+small and loads longer DeepRefine procedure details only when needed:
 
 - Full workflow, queue selection, refinement branch logic, and review rules:
   [references/deeprefine-workflow.md](references/deeprefine-workflow.md)
@@ -22,11 +24,11 @@ and loads longer DeepRefine procedure details only when needed:
 Do not reimplement or shorten the algorithm from memory. Load the relevant
 reference file before executing that part of the workflow.
 
-## Codex Invocation
+## Claude Code Invocation
 
 Trigger this skill when the user:
 
-- explicitly invokes `$deeprefine` or `/deeprefine`;
+- explicitly invokes `/deeprefine`;
 - asks to refine, improve, diagnose, repair, inspect, or review a Graphify
   knowledge graph;
 - asks to apply a previously reviewed DeepRefine refinement.
@@ -49,8 +51,8 @@ pip install -e /path/to/DeepRefine-Skill
 
 ## Hard Safety Policy
 
-A normal `$deeprefine` or `/deeprefine` invocation is dry-run only and **MUST
-NEVER** call `deeprefine apply`.
+A normal `/deeprefine` invocation is dry-run only and **MUST NEVER** call
+`deeprefine apply`.
 
 The default workflow must stop after:
 
@@ -83,8 +85,7 @@ explicitly accepts that risk.
 
 ### Full workflow
 
-Use for `$deeprefine`, `/deeprefine`, or requests to refine/improve/fix the
-graph.
+Use for `/deeprefine`, or requests to refine/improve/fix the graph.
 
 Follow the canonical reference in this order:
 
@@ -133,7 +134,7 @@ deeprefine apply --allow-low-confidence --trace-file ... --refinement-file ...
 
 ## Non-Negotiable Rules
 
-These are restated here so Codex always sees the hard stops before loading any
+These are restated here so Claude always sees the hard stops before loading any
 reference.
 
 Do not:
@@ -164,5 +165,5 @@ Keep this adapter concise. Load the smallest reference needed:
   `references/trace-and-commands.md`
 
 Use the canonical commands and artifacts exactly as written there. This adapter
-only maps those rules onto Codex's `$deeprefine` / `/deeprefine` invocation and
-approval behavior.
+only maps those rules onto Claude Code's `/deeprefine` invocation and approval
+behavior.

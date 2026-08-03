@@ -1,4 +1,4 @@
-"""DeepRefine Reafiner prompts — verbatim from autorefiner deeprefine_prompt.py."""
+"""DeepRefine refinement prompts — verbatim from autorefiner deeprefine_prompt.py."""
 
 REAFINER_JUDGEMENT_SYSTEM = """
 As an advanced judgement assistant, your task is to judge whether the given question is answerable based on the provided KG context.
