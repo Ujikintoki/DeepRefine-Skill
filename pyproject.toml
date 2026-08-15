@@ -51,6 +51,8 @@ deeprefine_skill = [
     "codex_skill/references/*.md",
     "claude_skill/SKILL.md",
     "claude_skill/references/*.md",
+    "dsh_skill/SKILL.md",
+    "dsh_skill/references/*.md",
     "commands/opencode/*.md",
     "gemini_extension/gemini-extension.json",
     "gemini_extension/GEMINI.md",
