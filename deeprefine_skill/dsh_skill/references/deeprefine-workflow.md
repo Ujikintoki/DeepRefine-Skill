@@ -155,5 +155,6 @@ Bare names such as `main()`, `run()`, `train()`, `test()`, and `setup()` are
 ambiguous even if they match only one node. Prefer file-qualified labels such
 as `trainer_Brain_CLS.py::train_epoch()`.
 
-`deeprefine apply` refuses LOW-confidence actions by default. Use
+`deeprefine apply` aborts and writes nothing when any LOW-confidence action is
+present — it does NOT apply HIGH/MEDIUM actions while skipping LOW ones. Use
 `--allow-low-confidence` only when the user explicitly approves the risk.

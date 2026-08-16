@@ -77,8 +77,9 @@ Do not treat any of these as approval:
 - a prior user message;
 - a successful `deeprefine review`.
 
-If the review contains LOW-confidence actions, use
-`--allow-low-confidence` only when the user's current approval message
+If the review contains any LOW-confidence action, `deeprefine apply` aborts and
+writes nothing (it does NOT apply HIGH/MEDIUM actions while skipping LOW ones).
+Use `--allow-low-confidence` only when the user's current approval message
 explicitly accepts that risk.
 
 ## Mode Selection
@@ -131,6 +132,23 @@ same user message:
 ```bash
 deeprefine apply --allow-low-confidence --trace-file ... --refinement-file ...
 ```
+
+### After review: closing options
+
+After showing the HIGH/MEDIUM/LOW report, stop and present these options to the
+user instead of deciding on your own:
+
+- **Approve & apply** — the user explicitly says approve/apply/write. Run
+  `deeprefine apply` (it aborts if any LOW action is present unless
+  `--allow-low-confidence` is given) then `deeprefine loop finish`.
+- **Skip apply, mark done** — the user declines the changes. Run
+  `deeprefine loop finish --trace-file ... --refinement-file ...` with no graph
+  write.
+- **Leave as proposal** — the user wants to stop. Do not finish; leave the
+  trace and review as-is for later.
+
+Never run `deeprefine apply` before the user's current message explicitly
+approves it, regardless of which option they later pick.
 
 ## Non-Negotiable Rules
 
