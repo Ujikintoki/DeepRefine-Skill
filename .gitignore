@@ -11,6 +11,9 @@ build/
 # Personal working documents — kept locally, not distributed
 docs/tmp/
 .github/skills/
+.dsh/
 .omo/
 graphify-out/
 venv/ 
+eval/data/
+eval/results/
