@@ -19,6 +19,7 @@ from .adapter_graphify import (
 )
 from .action_review import write_review_files
 from .history import append_history, mark_refined, query_id
+from .paths import checkpoints_metadata_path, create_checkpoint
 
 
 def refinement_to_jsonable(
@@ -98,7 +99,6 @@ def run_refine(
     *,
     graph_path: Path,
     cache_pkl: Path,
-    backup_path: Path,
     history_path: Path,
     log_dir: Path,
     cfg: dict[str, str],
@@ -134,6 +134,7 @@ def run_refine(
     refined_ids: set[str] = set()
     summary_rows: list[dict[str, Any]] = []
     completed = 0
+    meta_path = checkpoints_metadata_path(graph_path.parent.parent)
 
     def _persist() -> None:
         if completed == 0:
@@ -143,9 +144,21 @@ def run_refine(
         data["KG"] = deeprefine.kg
         nonlocal raw
         raw = sync_kg_to_graphify(raw, deeprefine.kg)
-        save_graphify_json(graph_path, raw, backup_path=backup_path)
+        # Per-run pre-state backup: graph.json.bak.<next_seq> = graph exactly
+        # as it was before this batch of refinements was written (the seq
+        # matches the post-state checkpoint created below).
+        from deeprefine_skill.paths import load_checkpoint_metadata, run_backup_path
+
+        meta_now = load_checkpoint_metadata(meta_path)
+        next_seq = (meta_now[-1]["seq"] if meta_now else 0) + 1
+        run_backup = run_backup_path(graph_path.parent.parent, next_seq)
+        save_graphify_json(graph_path, raw, backup_path=run_backup)
         save_bundle(cache_pkl, raw, data)
         mark_refined(history_path, refined_ids)
+        # Post-state checkpoint: full graph after this batch of refinements.
+        if refined_ids:
+            latest_qid = sorted(refined_ids)[-1]
+            create_checkpoint(graph_path, meta_path, latest_qid, "")
 
     try:
         with log_path.open("w", encoding="utf-8") as log_f:
@@ -242,7 +255,6 @@ def refine_from_history(
     return run_refine(
         graph_path=paths["graph_json"],
         cache_pkl=paths["deeprefine_pkl"],
-        backup_path=paths["graph_backup"],
         history_path=paths["history"],
         log_dir=paths["graphify_out"] / ".deeprefine",
         cfg=cfg,

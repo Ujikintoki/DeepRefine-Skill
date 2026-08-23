@@ -41,10 +41,14 @@ from deeprefine_skill.installers import (
     uninstall_opencode_skill,
 )
 from deeprefine_skill.paths import (
+    checkpoints_metadata_path,
     env_defaults,
     find_deeprefine_repo,
     find_project_root,
+    get_checkpoint_by_seq,
     graphify_paths,
+    load_checkpoint_metadata,
+    save_checkpoint_metadata,
     setup_import_paths,
 )
 
@@ -419,12 +423,25 @@ def cmd_apply(args: argparse.Namespace) -> int:
             print(f"  - {review.action}", file=sys.stderr)
         return 1
 
-    backup = paths["graph_backup"]
-    if paths["graph_json"].is_file() and not backup.is_file():
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        import shutil
+    # Per-run pre-state backup: graph.json.bak.<next_seq> is captured before
+    # every apply (never overwritten), so a single refinement run can be
+    # undone precisely via ``rollback --query``.
+    import shutil
 
+    from deeprefine_skill.paths import load_checkpoint_metadata, run_backup_path
+
+    meta_before = load_checkpoint_metadata(checkpoints_metadata_path(project))
+    next_seq = (meta_before[-1]["seq"] if meta_before else 0) + 1
+    backup = run_backup_path(project, next_seq)
+    if paths["graph_json"].is_file():
+        backup.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(paths["graph_json"], backup)
+    qid = ""
+    qtext = ""
+    if not getattr(args, "skip_trace_check", False) and args.trace_file:
+        qid = trace.get("query_id", "")
+        qtext = trace.get("query", "")
+
     if getattr(args, "refresh_wiki", False):
         from deeprefine_skill.wiki_refresh import (
             WikiRefreshError,
@@ -475,9 +492,52 @@ def cmd_apply(args: argparse.Namespace) -> int:
             "deeprefine_skill.agent_graph", fromlist=["apply_refinement_text"]
         ).apply_refinement_text(paths["graph_json"], text)
         print(f"Applied {len(changes)} action(s) to {paths['graph_json']}")
-
     for c in changes:
         print(f"  - {c}")
+
+    # Create a post-state checkpoint after applying (full graph snapshot,
+    # forming a linear timeline like git commits). Every apply is preserved,
+    # so alternative refinement chains never destroy each other's results.
+    from deeprefine_skill.paths import create_checkpoint
+
+    cp = create_checkpoint(
+        paths["graph_json"], checkpoints_metadata_path(project), qid, qtext
+    )
+    print(f"Checkpoint #{cp.stem.split('.')[-1]}: {cp}")
+
+    # Mark the refined query done in history so a later `deeprefine refine`
+    # run does not re-process it. If the query has no history row yet (e.g. an
+    # apply driven straight from a trace), append one instead of silently
+    # dropping the mark. Rows that are already marked are left untouched (no
+    # duplicate rows).
+    if qid:
+        from deeprefine_skill.history import append_history, iter_history, mark_refined
+
+        if any(r.get("id") == qid for r in iter_history(paths["history"])):
+            mark_refined(paths["history"], {qid})
+            print(f"Marked query {qid} as refined in history (pending -> done).")
+        elif qtext:
+            import time
+
+            append_history(
+                paths["history"],
+                qtext,
+                source="deeprefine_loop",
+                refined=True,
+                entry_id=qid,
+                extra={
+                    "refined_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                },
+            )
+            print(
+                f"Added query {qid} to history and marked it as refined "
+                "(pending -> done)."
+            )
+        else:
+            print(
+                f"Warning: no history row for query {qid} and no query text to "
+                "add one; refined mark not written (use 'deeprefine history add')."
+            )
     return 0
 
 
@@ -660,6 +720,200 @@ def cmd_refine(args: argparse.Namespace) -> int:
                 print(f"  actions: {row['action_file']}")
             if row.get("review_file"):
                 print(f"  review: {row['review_file']}")
+    return 0
+
+
+def cmd_rollback(args: argparse.Namespace) -> int:
+    """Inspect / restore the checkpoint timeline of graph.json.
+
+    Every ``deeprefine apply`` writes a post-state checkpoint (full graph)
+    to a linear timeline, like git commits. ``rollback <seq>`` switches
+    graph.json to that exact state AND resets the history marks of every
+    LATER checkpoint's query back to pending, so those queries can be
+    refined again. Checkpoint files are always kept — rollback never
+    deletes them, so every state stays comparable. ``--query <qid>`` undoes
+    the LAST refinement of one query precisely (per-run pre-state backup or
+    previous checkpoint) and resets that query plus all later ones.
+    """
+    project = find_project_root(
+        Path(args.project_root) if args.project_root else None
+    )
+    paths = graphify_paths(project)
+    meta_path = checkpoints_metadata_path(project)
+    meta = load_checkpoint_metadata(meta_path)
+
+    if args.query is not None:
+        if (
+            args.seq is not None
+            or args.list_checkpoints
+            or args.by_query
+        ):
+            print(
+                "Cannot combine --query with seq / --list.",
+                file=sys.stderr,
+            )
+            return 1        # Find the LAST checkpoint of that query on the timeline.
+        target = None
+        for c in meta:
+            if c.get("query_id") == args.query:
+                target = c
+        if target is None:
+            print(
+                f"No checkpoint found for query {args.query} "
+                "(it may never have been refined).",
+                file=sys.stderr,
+            )
+            return 1
+        seq = target["seq"]
+        qtext = target.get("query_text", "")
+        # Restore the exact PRE-refinement state: the per-run backup taken
+        # right before this apply (graph.json.bak.<seq>), falling back to
+        # the previous post-state checkpoint.
+        from deeprefine_skill.paths import run_backup_path
+
+        pre_state = run_backup_path(project, seq)
+        restored_from = f"per-run backup graph.json.bak.{seq}"
+        if not pre_state.is_file():
+            prev = get_checkpoint_by_seq(meta, seq - 1) if seq > 1 else None
+            if prev is None:
+                print(
+                    f"Cannot undo query {args.query}: no per-run backup "
+                    f"graph.json.bak.{seq} and no earlier checkpoint to fall "
+                    "back to.",
+                    file=sys.stderr,
+                )
+                return 1
+            pre_state = Path(prev["path"])
+            restored_from = f"checkpoint #{seq - 1}"
+        if not pre_state.is_file():
+            print(f"Backup file missing: {pre_state}", file=sys.stderr)
+            return 1
+
+        import shutil
+
+        shutil.copy2(pre_state, paths["graph_json"])
+        # Reset the undone query itself AND every later checkpoint's query
+        # back to pending (they were built on top of the undone refinement).
+        from deeprefine_skill.history import unmark_refined
+
+        reset_ids = {
+            c.get("query_id")
+            for c in meta
+            if c.get("seq", 0) >= seq and c.get("query_id")
+        }
+        unmarked = unmark_refined(paths["history"], set(reset_ids))
+        print(
+            f"Undid refinement of query {args.query} (checkpoint #{seq}): "
+            f"'{qtext}'"
+        )
+        print(f"Restored graph.json from {restored_from}.")
+        print("Checkpoint files were NOT deleted — every state stays comparable.")
+        if unmarked:
+            print(
+                f"Reset {unmarked} query mark(s) to pending (this query and "
+                "every later one)."
+            )
+        return 0
+
+    if args.list_checkpoints:
+        if not meta:
+            print("No checkpoints available.")
+            return 0
+        # Load per-query refined marks from history so both views can show
+        # which queries are done vs pending.
+        from deeprefine_skill.history import iter_history
+
+        marks = {
+            row.get("id"): bool(row.get("refined"))
+            for row in iter_history(paths["history"])
+            if row.get("id")
+        }
+
+        def _state(qid: str) -> str:
+            return "refined" if marks.get(qid) else "pending"
+
+        if args.by_query:
+            # Version-chain view: one block per query id, all its versions.
+            by_qid: dict[str, list] = {}
+            for c in meta:
+                by_qid.setdefault(c.get("query_id", "") or "-", []).append(c)
+            for qid, items in by_qid.items():
+                seqs = " -> ".join(f"#{c.get('seq')}" for c in items)
+                state = _state(qid)
+                print(f"{qid}  [{state}]  {len(items)} version(s)")
+                for c in items:
+                    ts = c.get("ts", "?")
+                    qtext = c.get("query_text", "")
+                    print(f"    #{c.get('seq')}  {ts}  {qtext}")
+                print(f"    chain: {seqs}")
+            return 0
+
+        print(
+            f"{'Seq':<5} {'Timestamp':<22} {'Query ID':<20} "
+            f"{'State':<9} {'Query Text'}"
+        )
+        print("-" * 88)
+        for c in meta:
+            seq = c.get("seq", "?")
+            ts = c.get("ts", "?")
+            qid = c.get("query_id", "") or "-"
+            qtext = c.get("query_text", "")
+            print(f"{seq:<5} {ts:<22} {qid:<20} {_state(qid):<9} {qtext}")
+        return 0
+
+    if args.by_query:
+        print("--by-query requires --list.", file=sys.stderr)
+        return 1
+
+    if args.seq is None:
+        print(
+            "Provide a seq (see: deeprefine rollback --list) or use --list.",
+            file=sys.stderr,
+        )
+        return 1
+
+    cp = get_checkpoint_by_seq(meta, args.seq)
+    if cp is None:
+        avail = [c.get("seq") for c in meta]
+        print(
+            f"Checkpoint #{args.seq} not found. Available: {avail}",
+            file=sys.stderr,
+        )
+        return 1
+
+    cp_file = Path(cp["path"])
+    if not cp_file.is_file():
+        print(f"Checkpoint file missing: {cp_file}", file=sys.stderr)
+        return 1
+
+    import shutil
+
+    shutil.copy2(cp_file, paths["graph_json"])
+    # Reset history marks of every LATER checkpoint's query back to pending
+    # so they can be refined again from this state. Checkpoint FILES are
+    # kept (compare states via --list / --by-query).
+    from deeprefine_skill.history import unmark_refined
+
+    later = [
+        c.get("query_id")
+        for c in meta
+        if c.get("seq", 0) > args.seq and c.get("query_id")
+    ]
+    unmarked = unmark_refined(paths["history"], set(later))
+    qtext = cp.get("query_text", "")
+    qid = cp.get("query_id", "")
+    print(f"Restored graph.json from checkpoint #{args.seq} ({qid}): '{qtext}'")
+    print("This is a pure graph-state switch; checkpoint files were NOT deleted.")
+    if unmarked:
+        print(
+            f"Reset {unmarked} later query mark(s) to pending "
+            "(refine them again to build a new timeline)."
+        )
+    else:
+        print(
+            "No later query marks were pending-reset "
+            "(nothing refined after this checkpoint)."
+        )
     return 0
 
 
@@ -1055,6 +1309,43 @@ def main(argv: list[str] | None = None) -> int:
     p_lf.add_argument("--refinement-file", default=None)
     p_lf.add_argument("--project-root", default=None)
     p_lf.set_defaults(func=cmd_loop_finish)
+
+    # deeprefine rollback --list | <seq>
+    p_rollback = sub.add_parser(
+        "rollback",
+        help="Inspect / restore the checkpoint timeline of graph.json",
+    )
+    p_rollback.add_argument(
+        "--list",
+        "-l",
+        dest="list_checkpoints",
+        action="store_true",
+        help="List all checkpoints (linear timeline, one per apply)",
+    )
+    p_rollback.add_argument(
+        "--query",
+        default=None,
+        help=(
+            "Undo the LAST refinement of a query by its history id: restore "
+            "graph.json to its pre-refinement state (per-run backup "
+            "graph.json.bak.<seq> or the previous checkpoint) and reset that "
+            "query plus every later checkpoint's query back to pending"
+        ),
+    )
+    p_rollback.add_argument(
+        "--by-query",
+        action="store_true",
+        help="With --list: group checkpoints per query id (version-chain view)",
+    )
+    p_rollback.add_argument(
+        "seq",
+        nargs="?",
+        type=int,
+        default=None,
+        help="Roll back graph.json to checkpoint <seq> and reset later query marks to pending",
+    )
+    p_rollback.add_argument("--project-root", default=None)
+    p_rollback.set_defaults(func=cmd_rollback)
 
     args = parser.parse_args(argv)
     if hasattr(args, "_default_project"):

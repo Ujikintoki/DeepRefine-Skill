@@ -121,6 +121,8 @@ graphify-out/
 └── .deeprefine/
     ├── history.jsonl                       # DeepRefine-maintained history queue
     ├── graph.json.bak                      # backup before first apply in this run
+    ├── checkpoints/graph.checkpoint.<seq>.json  # post-state graph after each apply
+    ├── checkpoints.json                    # checkpoint timeline registry
     ├── loop_trace_<query_id>.json          # per-query loop audit trace
     ├── refinement_results_<YYYYMMDD>.jsonl # per-day run log
     ├── refinement_actions_*.txt            # optional; only when refinement path is taken
