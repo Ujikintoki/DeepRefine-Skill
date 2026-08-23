@@ -1,10 +1,12 @@
-"""Installers for agent-platform skill files (Cursor, Copilot CLI, Gemini CLI, OpenCode).
+"""Installers for agent-platform skill files (Cursor, Copilot CLI, Gemini CLI,
+OpenCode, DeepSeek Harness).
 
 Each platform has a source SKILL.md variant (SKILL.md for Cursor,
 SKILL_COPILOT.md for Copilot CLI, gemini_extension/ for Gemini CLI,
-SKILL_OPENCODE.md for OpenCode) bundled in the wheel or found at the
-repo root during editable installs. The install/remove functions copy
-the appropriate variant into the platform-specific directory.
+SKILL_OPENCODE.md for OpenCode, dsh_skill/ for DeepSeek Harness) bundled in
+the wheel or found at the repo root during editable installs. The
+install/remove functions copy the appropriate variant into the
+platform-specific directory.
 """
 
 from __future__ import annotations
@@ -18,9 +20,11 @@ _SKILL_COPILOT_MD_NAME = "SKILL_COPILOT.md"
 _SKILL_OPENCODE_MD_NAME = "SKILL_OPENCODE.md"
 _CODEX_SKILL_DIR = "codex_skill"
 _CLAUDE_SKILL_DIR = "claude_skill"
+_DSH_SKILL_DIR = "dsh_skill"
 _CODEX_AGENTS_DIR = "agents"
 _CODEX_REFERENCES_DIR = "references"
 _CLAUDE_REFERENCES_DIR = "references"
+_DSH_REFERENCES_DIR = "references"
 _LEGACY_CODEX_AGENT_LOOP_REF_NAME = "deeprefine-agent-loop.md"
 _OPENAI_YAML_NAME = "openai.yaml"
 _GEMINI_EXTENSION_NAME = "deeprefine-skill"
@@ -383,6 +387,97 @@ def uninstall_claude_skill(*, project: bool) -> bool:
             removed = True
 
     for parent in [dest_dir / _CLAUDE_REFERENCES_DIR, dest_dir, dest_dir.parent]:
+        try:
+            parent.rmdir()
+        except OSError:
+            pass
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek Harness (dsh)
+# ---------------------------------------------------------------------------
+
+
+def dsh_skill_template_path() -> Path:
+    """Return the dsh skill template directory."""
+    bundled = Path(__file__).resolve().parent / _DSH_SKILL_DIR
+    if (bundled / _SKILL_MD_NAME).is_file():
+        return bundled
+    repo_root = Path(__file__).resolve().parents[1]
+    fallback = repo_root / "deeprefine_skill" / _DSH_SKILL_DIR
+    if (fallback / _SKILL_MD_NAME).is_file():
+        return fallback
+    raise FileNotFoundError(
+        "Missing dsh skill template (expected under "
+        "deeprefine_skill/dsh_skill/)."
+    )
+
+
+def skill_md_path_dsh() -> Path:
+    """Return the path to the dsh SKILL.md source."""
+    return dsh_skill_template_path() / _SKILL_MD_NAME
+
+
+def dsh_references_path() -> Path:
+    """Return the dsh references template directory."""
+    refs = dsh_skill_template_path() / _DSH_REFERENCES_DIR
+    if refs.is_dir():
+        return refs
+    raise FileNotFoundError(
+        "Missing dsh references template (expected under "
+        "deeprefine_skill/dsh_skill/references/)."
+    )
+
+
+def install_dsh_skill(*, project: bool) -> Path:
+    """Install the dsh skill into ``.dsh/skills/deeprefine/``.
+
+    Parameters
+    ----------
+    project : bool
+        If *True*, install under the current working directory
+        (``.dsh/skills/deeprefine/``).  If *False*, install under
+        ``~/.dsh/skills/deeprefine/`` (user-wide).
+
+    Returns
+    -------
+    Path
+        Destination path of the installed ``SKILL.md``.
+    """
+    src_skill = skill_md_path_dsh()
+    src_references = dsh_references_path()
+    if project:
+        dest_dir = Path.cwd() / ".dsh" / "skills" / "deeprefine"
+    else:
+        dest_dir = Path.home() / ".dsh" / "skills" / "deeprefine"
+    references_dir = dest_dir / _DSH_REFERENCES_DIR
+    references_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src_skill, dest_dir / _SKILL_MD_NAME)
+    for ref in src_references.glob("*.md"):
+        shutil.copy2(ref, references_dir / ref.name)
+    return dest_dir / _SKILL_MD_NAME
+
+
+def uninstall_dsh_skill(*, project: bool) -> bool:
+    """Remove a previously installed dsh skill."""
+    if project:
+        dest_dir = Path.cwd() / ".dsh" / "skills" / "deeprefine"
+    else:
+        dest_dir = Path.home() / ".dsh" / "skills" / "deeprefine"
+
+    removed = False
+    for dest in [
+        dest_dir / _SKILL_MD_NAME,
+        dest_dir / _DSH_REFERENCES_DIR / "deeprefine-workflow.md",
+        dest_dir / _DSH_REFERENCES_DIR / "llm-prompts.md",
+        dest_dir / _DSH_REFERENCES_DIR / "trace-and-commands.md",
+    ]:
+        if dest.is_file():
+            dest.unlink()
+            removed = True
+
+    for parent in [dest_dir / _DSH_REFERENCES_DIR, dest_dir, dest_dir.parent]:
         try:
             parent.rmdir()
         except OSError:

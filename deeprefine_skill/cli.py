@@ -1,10 +1,10 @@
 """DeepRefine CLI — command-line entry point for the DeepRefine agent skill.
 
 Provides subcommands for platform-specific skill installation (Cursor,
-Copilot CLI, Gemini CLI, Codex, OpenCode), query-history management,
-FAISS index rebuilding, dry-run refinement review, graph refinement,
-loop-trace lifecycle management, and applying refinement actions to
-``graph.json``.
+Copilot CLI, Gemini CLI, Codex, OpenCode, DeepSeek Harness), query-history
+management, FAISS index rebuilding, dry-run refinement review, graph
+refinement, loop-trace lifecycle management, and applying refinement actions
+to ``graph.json``.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from deeprefine_skill.installers import (
     install_codex_skill,
     install_copilot_skill,
     install_cursor_skill,
+    install_dsh_skill,
     install_gemini_extension,
     install_opencode_skill,
     link_gemini_extension,
@@ -35,6 +36,7 @@ from deeprefine_skill.installers import (
     uninstall_codex_skill,
     uninstall_copilot_skill,
     uninstall_cursor_skill,
+    uninstall_dsh_skill,
     uninstall_gemini_extension,
     uninstall_opencode_skill,
 )
@@ -186,6 +188,32 @@ def cmd_opencode_uninstall(args: argparse.Namespace) -> int:
     if removed:
         scope = "project" if args.project else "user"
         print(f"Removed DeepRefine OpenCode skill and commands ({scope}).")
+    else:
+        print("Skill not installed at the selected scope.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek Harness (dsh) handlers
+# ---------------------------------------------------------------------------
+
+
+def cmd_dsh_install(args: argparse.Namespace) -> int:
+    """``deeprefine dsh install`` - install SKILL.md for DeepSeek Harness."""
+    dest = install_dsh_skill(project=args.project)
+    scope = "project" if args.project else "user"
+    print(f"Installed DeepRefine dsh skill ({scope}) -> {dest}")
+    if args.project:
+        print("Restart dsh, then invoke /deeprefine.")
+    return 0
+
+
+def cmd_dsh_uninstall(args: argparse.Namespace) -> int:
+    """``deeprefine dsh uninstall`` - remove the dsh skill."""
+    removed = uninstall_dsh_skill(project=args.project)
+    if removed:
+        scope = "project" if args.project else "user"
+        print(f"Removed DeepRefine dsh skill ({scope}).")
     else:
         print("Skill not installed at the selected scope.")
     return 0
@@ -426,6 +454,22 @@ def cmd_apply(args: argparse.Namespace) -> int:
             f"Applied {len(changes)} action(s) to {paths['graph_json']} "
             f"and refreshed {result.wiki_dir}"
         )
+    elif getattr(args, "update_wiki", False):
+        from deeprefine_skill.wiki_update import (
+            WikiUpdateError,
+            apply_refinement_with_wiki_update,
+        )
+
+        try:
+            result = apply_refinement_with_wiki_update(
+                graph_path=paths["graph_json"],
+                refinement_text=text,
+            )
+        except WikiUpdateError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        changes = result.changes
+        print(f"Updated {len(result.updated_files)} wiki file(s)")
     else:
         changes = __import__(
             "deeprefine_skill.agent_graph", fromlist=["apply_refinement_text"]
@@ -792,6 +836,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_opu.set_defaults(func=cmd_opencode_uninstall, _default_project=True)
 
+    # deeprefine dsh install | uninstall
+    p_dsh = sub.add_parser("dsh", help="DeepSeek Harness skill integration")
+    dsh_sub = p_dsh.add_subparsers(dest="dsh_cmd", required=True)
+
+    p_di = dsh_sub.add_parser(
+        "install", help="Install /deeprefine skill for DeepSeek Harness"
+    )
+    _add_project_flag(
+        p_di,
+        project_help=(
+            "Install to .dsh/skills/deeprefine in the current directory "
+            "(default for dsh install)"
+        ),
+        user_help="Install to ~/.dsh/skills/deeprefine (all projects)",
+    )
+    p_di.set_defaults(func=cmd_dsh_install, _default_project=True)
+
+    p_du = dsh_sub.add_parser("uninstall", help="Remove dsh skill")
+    _add_project_flag(
+        p_du,
+        project_help=(
+            "Remove from .dsh/skills/deeprefine in the current directory "
+            "(default for dsh uninstall)"
+        ),
+        user_help="Remove from ~/.dsh/skills/deeprefine (all projects)",
+    )
+    p_du.set_defaults(func=cmd_dsh_uninstall, _default_project=True)
+
     # deeprefine gemini link | install | uninstall | path
     p_gemini = sub.add_parser("gemini", help="Gemini CLI integration")
     gemini_sub = p_gemini.add_subparsers(dest="gemini_cmd", required=True)
@@ -950,6 +1022,15 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Regenerate graphify-out/wiki from the refined graph and commit the "
             "graph + Wiki together; leave both unchanged if refresh fails."
+        ),
+    )
+    p_apply.add_argument(
+        "--update-wiki",
+        action="store_true",
+        help=(
+            "Apply refinement actions as incremental edits to wiki .md files. "
+            "Supports both [[wikilinks]] and [text](url) markdown links — uses "
+            "the same link convention as the original file."
         ),
     )
     p_apply.add_argument("--project-root", default=None)
