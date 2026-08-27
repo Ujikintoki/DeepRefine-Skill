@@ -11,15 +11,15 @@ from atlas_rag.llm_generator import GenerationConfig, LLMGenerator
 from atlas_rag.vectorstore.embedding_model import Qwen3Emb
 from autorefiner.src.deeprefine import DeepRefine, RetrievalStepResult
 
-from .adapter_graphify import (
+from deeprefine_skill.adapters.graphify.adapter import (
     load_or_build_data,
     save_bundle,
     save_graphify_json,
     sync_kg_to_graphify,
 )
-from .action_review import write_review_files
-from .history import append_history, mark_refined, query_id
-from .paths import checkpoints_metadata_path, create_checkpoint
+from deeprefine_skill.core.action_review import write_review_files
+from deeprefine_skill.core.history import append_history, mark_refined, query_id
+from deeprefine_skill.core.paths import checkpoints_metadata_path, create_checkpoint
 
 
 def refinement_to_jsonable(
@@ -147,7 +147,7 @@ def run_refine(
         # Per-run pre-state backup: graph.json.bak.<next_seq> = graph exactly
         # as it was before this batch of refinements was written (the seq
         # matches the post-state checkpoint created below).
-        from deeprefine_skill.paths import load_checkpoint_metadata, run_backup_path
+        from deeprefine_skill.core.paths import load_checkpoint_metadata, run_backup_path
 
         meta_now = load_checkpoint_metadata(meta_path)
         next_seq = (meta_now[-1]["seq"] if meta_now else 0) + 1

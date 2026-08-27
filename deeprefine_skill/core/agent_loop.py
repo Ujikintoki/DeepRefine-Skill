@@ -6,12 +6,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from deeprefine_skill.agent_prompts import (
+from deeprefine_skill.core.agent_prompts import (
     HISTORY_HORIZON_DEFAULT,
     MAX_HOPS_DEFAULT,
     MAX_TRIPLE_NUM_BY_STEP,
 )
-from deeprefine_skill.history import query_id
+from deeprefine_skill.core.history import query_id
 
 JUDGE_RE = re.compile(r"<judge>\s*(yes|no)\s*</judge>", re.IGNORECASE)
 ABDUCTION_RE = re.compile(r"<abduction>.*?</abduction>", re.IGNORECASE | re.DOTALL)

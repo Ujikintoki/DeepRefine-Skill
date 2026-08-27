@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from deeprefine_skill.cli import main
-from deeprefine_skill.wiki_refresh import (
+from deeprefine_skill.adapters.wiki.refresh import (
     WikiRefreshError,
     apply_refinement_with_wiki_refresh,
 )

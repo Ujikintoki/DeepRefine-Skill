@@ -33,7 +33,7 @@ def record_ground_truth(wiki_dir: Path) -> dict[str, set[str]]:
     Returns:
         {page_stem: {target_label, ...}}
     """
-    from deeprefine_skill.wiki_importer import extract_links
+    from deeprefine_skill.adapters.wiki.importer import extract_links
     truth: dict[str, set[str]] = {}
     for f in sorted(wiki_dir.iterdir()):
         if not f.is_file() or f.suffix.lower() not in {".md", ".markdown", ".txt"}:

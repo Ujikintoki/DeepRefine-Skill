@@ -29,7 +29,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from deeprefine_skill.agent_graph import _parse_action_string, parse_refinement_block
+from deeprefine_skill.core.agent_graph import _parse_action_string, parse_refinement_block
 
 
 # ---------------------------------------------------------------------------

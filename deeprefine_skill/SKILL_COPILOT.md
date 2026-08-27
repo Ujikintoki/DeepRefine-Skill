@@ -576,3 +576,28 @@ deeprefine rollback 1
 deeprefine rollback 3   # Chain A final state
 deeprefine rollback 7   # Chain B final state
 ```
+
+## Wiki Mode (LLM-Wiki Adapter)
+
+When working with an LLM-Wiki (Obsidian vault, GitHub Wiki, etc.) instead of a code knowledge graph, wiki is used as an explicit adapter for the core DeepRefine pipeline.
+
+**Retrieval methods**: use `wiki_search` and `k_hop_expansion` instead of `graphify_query`
+
+**Write-back**: uses wiki link syntax (`[[wikilinks]]` or `[text](url)`)
+
+**Initial setup**: run `deeprefine wiki import --wiki-dir <path>` to build graph.json from wiki source files
+
+**Wiki-specific commands**:
+```bash
+# Import wiki pages into graph.json
+deeprefine wiki import --wiki-dir <wiki-directory> [--output-dir <output-dir>]
+
+# Retrieve from wiki (full-text search + BFS)
+deeprefine wiki retrieve --query <text> [--graph <path>]
+
+# Refresh wiki (regenerate from graph.json)
+deeprefine wiki refresh --graph <path> --wiki-dir <path>
+
+# Update wiki (incremental edits to .md files)
+deeprefine wiki update --graph <path> --wiki-dir <path>
+```

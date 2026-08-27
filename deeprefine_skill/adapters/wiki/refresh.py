@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Hashable, Sequence
 
-from deeprefine_skill.agent_graph import apply_refinement_text
+from deeprefine_skill.core.agent_graph import apply_refinement_text
 
 
 class WikiRefreshError(RuntimeError):
