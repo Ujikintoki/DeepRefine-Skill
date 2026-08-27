@@ -3,6 +3,11 @@
 10-node synthetic knowledge graph for end-to-end Reafiner protocol verification.
 Schema conforms to graphify `graph.json` (NetworkX `node_link_data`).
 
+> **Path note (2026-08 restructure):** harness modules now live in
+> `deeprefine_skill/core/`; the CLI entry is `deeprefine_skill/cli.py`.
+> Evidence anchors use `file::symbol` form (no line numbers) so they survive
+> future refactors.
+
 ## Design Goals
 
 One data file, two Reafiner paths:
@@ -35,22 +40,22 @@ One data file, two Reafiner paths:
 
 | source | relation | target | evidence |
 |--------|----------|--------|----------|
-| validate_trace | implements | Reafiner | `agent_loop.py` L44 |
-| validate_trace | reads | loop_trace | `agent_loop.py` L51 |
-| action_review | depends_on | validate_trace | `action_review.py` L14 |
-| apply_refinement_text | modifies | graph_json | `agent_graph.py` L139 |
-| deeprefine | contains | validate_trace | `cli.py` L78 |
-| deeprefine | contains | apply_refinement_text | `cli.py` L92 |
-| deeprefine | reads | history_jsonl | `cli.py` L56 |
-| deeprefine | writes | loop_trace | `cli.py` L65 |
+| validate_trace | implements | Reafiner | `core/agent_loop.py::validate_trace` |
+| validate_trace | reads | loop_trace | `core/agent_loop.py::validate_trace` |
+| action_review | depends_on | validate_trace | fixture scenario edge from PR #4 layout (current code imports `agent_graph`); kept by design for Query 2 — see Known Drifts |
+| apply_refinement_text | modifies | graph_json | `core/agent_graph.py::apply_refinement_text` |
+| deeprefine | contains | validate_trace | `deeprefine_skill/cli.py::cmd_loop_validate` |
+| deeprefine | contains | apply_refinement_text | `deeprefine_skill/cli.py::cmd_apply` |
+| deeprefine | reads | history_jsonl | `deeprefine_skill/cli.py` (history commands) |
+| deeprefine | writes | loop_trace | `deeprefine_skill/cli.py` (loop commands) |
 
 **INFERRED (confidence 0.7–0.8)** — represent LLM-derived semantic links:
 
 | source | relation | target | score | evidence |
 |--------|----------|--------|-------|----------|
-| agent_prompts | defines | Reafiner | 0.8 | `agent_prompts.py` |
-| history_jsonl | tracks | query_id | 0.7 | `history.py` L12 |
-| deeprefine | modifies | graph_json | 0.8 | `cli.py` |
+| agent_prompts | defines | Reafiner | 0.8 | `core/agent_prompts.py` |
+| history_jsonl | tracks | query_id | 0.7 | `core/history.py::query_id` |
+| deeprefine | modifies | graph_json | 0.8 | `deeprefine_skill/cli.py` (apply/refine commands) |
 
 ### Deliberately Missing (2 gaps)
 
@@ -58,8 +63,8 @@ These edges exist in the real codebase but are **absent from the KG** to trigger
 
 | source | relation | target | Real evidence |
 |--------|----------|--------|---------------|
-| action_review | audits | graph_json | `action_review.py` reads `graph_json_path` |
-| validate_trace | imports | agent_prompts | `agent_loop.py` line 8: `from .agent_prompts import ...` |
+| action_review | audits | graph_json | `core/action_review.py::review_action` (evidence strings reference `graph.json`) |
+| validate_trace | imports | agent_prompts | `core/agent_loop.py` header: `from deeprefine_skill.core.agent_prompts import ...` |
 
 ## Queries
 
@@ -94,7 +99,7 @@ Where does validate_trace get its prompts from?
 
 ## Schema Conformance
 
-- Uses `"edges"` key (graphify default; `agent_graph.py` also handles `"links"`)
+- Uses `"edges"` key (graphify default; `core/agent_graph.py` also handles `"links"`)
 - Node fields match graphify: `id`, `label`, `file_type`, `source_file`, `source_location`, `community`
 - Edge fields match graphify: `source`, `target`, `relation`, `confidence`, `confidence_score`, `source_file`, `source_location`, `weight`
 - `confidence` uses graphify tags: `EXTRACTED` / `INFERRED` / `AMBIGUOUS`
@@ -155,3 +160,18 @@ rm -rf /tmp/test_kb
 | `fixtures/refinement-ambiguous.txt` | Fuzzy node name → LOW confidence |
 | `fixtures/refinement-invalid.txt` | No `<refinement>` block → parse error |
 | `scripts/validate_graph_schema.py` | Schema conformance checker |
+
+## Known Drifts (2026-08-27 audit) — accepted by design
+
+This fixture is a self-authored scenario snapshot (PR #4), not a live index of
+the codebase: the project graphifies its own code, so fixture provenance
+naturally lags refactors. Both drifts below are accepted; do not "fix" them
+against current code — the fixture must stay internally consistent with the
+Query scenarios, not with the moving codebase.
+
+1. Node `source_file` values use pre-restructure paths
+   (`deeprefine_skill/agent_loop.py` …). Cosmetic; no test asserts them.
+2. The edge `action_review → depends_on → validate_trace` reflects the PR #4
+   layout (current code imports `agent_graph` instead). It is a prop of the
+   Query 2 refinement scenario (retrieve → abduce → insert
+   `action_review → audits → graph_json`) and stays as-is.
