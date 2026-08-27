@@ -1,4 +1,10 @@
-"""Argument-parser integration for ``deeprefine benchmark``."""
+"""Standalone CLI for benchmark evaluation.
+
+Usage:
+    python eval/benchmarking/cli.py prepare --suite <suite-id> --output-dir <dir>
+    python eval/benchmarking/cli.py evaluate --suite <dir> --baseline-graph <f> --candidate-graph <f> --output-dir <dir>
+    python eval/benchmarking/cli.py report --result <f> --output <f>
+"""
 
 from __future__ import annotations
 
@@ -8,9 +14,23 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .evaluator import evaluate_suite
-from .prepare import SUPPORTED_SUITES, prepare_suite
-from .report import render_markdown
+# Dual-mode entry point:
+#   package mode (python -m eval.benchmarking.cli): relative imports resolve
+#   script mode   (python eval/benchmarking/cli.py): no parent package, so
+#     eval/ is put on sys.path and the bare ``benchmarking`` imports are used
+if __name__ == "__main__":
+    eval_root = Path(__file__).resolve().parent.parent
+    if str(eval_root) not in sys.path:
+        sys.path.insert(0, str(eval_root))
+
+try:
+    from .evaluator import evaluate_suite
+    from .prepare import SUPPORTED_SUITES, prepare_suite
+    from .report import render_markdown
+except ImportError:  # script mode: no parent package context
+    from benchmarking.evaluator import evaluate_suite
+    from benchmarking.prepare import SUPPORTED_SUITES, prepare_suite
+    from benchmarking.report import render_markdown
 
 
 def _fail(exc: Exception) -> int:
@@ -188,3 +208,90 @@ def register_benchmark_commands(subparsers: Any) -> None:
     report.add_argument("--format", choices=("markdown",), default="markdown")
     report.add_argument("--output", required=True, help="Output file or '-' for stdout")
     report.set_defaults(func=cmd_benchmark_report)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point for standalone CLI usage."""
+
+    parser = argparse.ArgumentParser(
+        prog="deeprefine-benchmark",
+        description="Prepare and evaluate lightweight graph-quality benchmarks",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # prepare
+    prepare = subparsers.add_parser(
+        "prepare",
+        help="Prepare a deterministic suite from upstream data",
+    )
+    prepare.add_argument("--suite", required=True, choices=sorted(SUPPORTED_SUITES))
+    prepare.add_argument(
+        "--profile",
+        default=None,
+        choices=("smoke", "quick", "readme"),
+        help="Default: smoke for synthetic, quick for real suites",
+    )
+    prepare.add_argument(
+        "--source",
+        default=None,
+        help="Official upstream JSON file (not needed for synthetic-smoke-v1)",
+    )
+    prepare.add_argument("--output-dir", required=True)
+    prepare.set_defaults(func=cmd_benchmark_prepare)
+
+    # evaluate
+    evaluate = subparsers.add_parser(
+        "evaluate",
+        help="Compare baseline and candidate Graphify graph.json files",
+    )
+    evaluate.add_argument(
+        "--suite",
+        required=True,
+        help="Prepared suite directory, suite.json, or built-in suite ID",
+    )
+    evaluate.add_argument("--baseline-graph", required=True)
+    evaluate.add_argument("--candidate-graph", required=True)
+    evaluate.add_argument("--baseline-predictions", default=None)
+    evaluate.add_argument("--candidate-predictions", default=None)
+    evaluate.add_argument(
+        "--baseline-wiki",
+        default=None,
+        help="Optional baseline Wiki directory for local-link integrity checks",
+    )
+    evaluate.add_argument(
+        "--candidate-wiki",
+        default=None,
+        help="Optional candidate Wiki directory for local-link integrity checks",
+    )
+    evaluate.add_argument(
+        "--semantic-model",
+        default=None,
+        help="Opt in to G-BERTScore with this bert-score model (for example roberta-large)",
+    )
+    evaluate.add_argument("--output-dir", required=True)
+    evaluate.add_argument("--graphify-version", default=None)
+    evaluate.add_argument("--deeprefine-version", default=None)
+    evaluate.add_argument("--model", default=None)
+    evaluate.add_argument("--temperature", type=float, default=None)
+    evaluate.add_argument("--prompt-config-hash", default=None)
+    evaluate.add_argument("--llm-calls", type=int, default=0)
+    evaluate.add_argument("--input-tokens", type=int, default=0)
+    evaluate.add_argument("--output-tokens", type=int, default=0)
+    evaluate.set_defaults(func=cmd_benchmark_evaluate)
+
+    # report
+    report = subparsers.add_parser(
+        "report",
+        help="Render one or more result.json files as Markdown",
+    )
+    report.add_argument("--result", action="append", required=True)
+    report.add_argument("--format", choices=("markdown",), default="markdown")
+    report.add_argument("--output", required=True, help="Output file or '-' for stdout")
+    report.set_defaults(func=cmd_benchmark_report)
+
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

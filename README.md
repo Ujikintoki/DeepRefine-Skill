@@ -218,10 +218,10 @@ The package includes a self-authored fixture solely to verify the evaluator:
 ```bash
 deeprefine benchmark evaluate \
   --suite synthetic-smoke-v1 \
-  --baseline-graph deeprefine_skill/benchmark_suites/synthetic-smoke-v1/baseline_graph.json \
-  --candidate-graph deeprefine_skill/benchmark_suites/synthetic-smoke-v1/candidate_graph.json \
-  --baseline-predictions deeprefine_skill/benchmark_suites/synthetic-smoke-v1/baseline_predictions.jsonl \
-  --candidate-predictions deeprefine_skill/benchmark_suites/synthetic-smoke-v1/candidate_predictions.jsonl \
+  --baseline-graph eval/suites/synthetic-smoke-v1/baseline_graph.json \
+  --candidate-graph eval/suites/synthetic-smoke-v1/candidate_graph.json \
+  --baseline-predictions eval/suites/synthetic-smoke-v1/baseline_predictions.jsonl \
+  --candidate-predictions eval/suites/synthetic-smoke-v1/candidate_predictions.jsonl \
   --output-dir graphify-out/.deeprefine/benchmark/smoke
 ```
 

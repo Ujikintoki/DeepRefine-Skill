@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from importlib import resources
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -25,11 +24,14 @@ def sha256_file(path: str | Path) -> str:
 def builtin_suite_path(suite_id: str) -> Path:
     """Resolve an unpacked built-in suite directory."""
 
-    root = resources.files("deeprefine_skill").joinpath("benchmark_suites", suite_id)
-    path = Path(str(root))
-    if not (path / "suite.json").is_file():
+    # By design, suites live in eval/suites/ relative to this file: the eval
+    # tree is checkout-only (never packaged into the wheel), so benchmark runs
+    # always resolve against a source checkout.
+    eval_root = Path(__file__).resolve().parent.parent
+    root = eval_root / "suites" / suite_id
+    if not (root / "suite.json").is_file():
         raise ValueError(f"Unknown built-in benchmark suite: {suite_id}")
-    return path
+    return root
 
 
 def resolve_suite_path(value: str | Path) -> Path:

@@ -12,30 +12,42 @@ from pathlib import Path
 import deeprefine_skill
 import pytest
 
-from deeprefine_skill.benchmarking.graph import (
+# Tests for the benchmark evaluation pipeline (moved to eval/benchmarking/)
+# These tests verify the core benchmarking functionality
+
+import sys
+
+# Import the engine through the ``eval.benchmarking`` namespace package.
+# The repo root goes on sys.path so the import resolves; ``eval/`` is
+# intentionally left without an ``__init__.py`` so it never enters the wheel.
+_repo_root = Path(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from eval.benchmarking.graph import (
     GraphNode,
     align_entities,
     bounded_bfs,
     load_graphify_graph,
     normalize_source,
 )
-from deeprefine_skill.benchmarking.evaluator import evaluate_suite
-from deeprefine_skill.benchmarking.metrics import (
+from eval.benchmarking.evaluator import evaluate_suite
+from eval.benchmarking.metrics import (
     answer_exact_match,
     answer_token_f1,
     lexical_graph_score,
     precision_recall_f1,
     reciprocal_rank,
 )
-from deeprefine_skill.benchmarking.prepare import prepare_suite
-from deeprefine_skill.benchmarking.suite import sha256_file, verify_suite_lock
-from deeprefine_skill.benchmarking.wiki import inspect_wiki_directory
+from eval.benchmarking.prepare import prepare_suite
+from eval.benchmarking.suite import sha256_file, verify_suite_lock
+from eval.benchmarking.cli import main as bench_main
+from eval.benchmarking.wiki import inspect_wiki_directory
 from deeprefine_skill.cli import main
 
 
-PACKAGE_ROOT = Path(deeprefine_skill.__file__).resolve().parent
 SMOKE_SUITE_DIR = (
-    PACKAGE_ROOT / "benchmark_suites" / "synthetic-smoke-v1"
+    _repo_root / "eval" / "suites" / "synthetic-smoke-v1"
 )
 SMOKE_SUITE = SMOKE_SUITE_DIR / "suite.json"
 BASELINE_GRAPH = SMOKE_SUITE_DIR / "baseline_graph.json"
@@ -46,7 +58,6 @@ CANDIDATE_PREDICTIONS = SMOKE_SUITE_DIR / "candidate_predictions.jsonl"
 
 def _run_smoke_evaluation(output_dir: Path, *, predictions: bool = False) -> int:
     args = [
-        "benchmark",
         "evaluate",
         "--suite",
         str(SMOKE_SUITE),
@@ -66,20 +77,32 @@ def _run_smoke_evaluation(output_dir: Path, *, predictions: bool = False) -> int
                 str(CANDIDATE_PREDICTIONS),
             ]
         )
-    return main(args)
+    return bench_main(args)
 
 
 def test_benchmark_help_lists_public_subcommands(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exc_info:
-        main(["benchmark", "--help"])
+        bench_main(["--help"])
 
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
     assert "prepare" in output
     assert "evaluate" in output
     assert "report" in output
+
+
+def test_production_cli_does_not_register_benchmark(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Lock in the eval-migration decision: the benchmark engine ships outside
+    the production CLI; only the standalone eval/benchmarking entry exposes it."""
+    with pytest.raises(SystemExit) as exc_info:
+        main(["benchmark", "--help"])
+
+    assert exc_info.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_packaged_synthetic_suite_uses_versioned_public_schema() -> None:
@@ -162,9 +185,8 @@ def test_benchmark_report_renders_an_existing_result(tmp_path: Path) -> None:
     assert _run_smoke_evaluation(evaluation_dir, predictions=True) == 0
     output = tmp_path / "combined-report.md"
 
-    exit_code = main(
+    exit_code = bench_main(
         [
-            "benchmark",
             "report",
             "--result",
             str(evaluation_dir / "result.json"),
@@ -342,9 +364,8 @@ def test_cli_prepare_defaults_synthetic_to_smoke(tmp_path: Path) -> None:
     destination = tmp_path / "cli-prepared"
 
     assert (
-        main(
+        bench_main(
             [
-                "benchmark",
                 "prepare",
                 "--suite",
                 "synthetic-smoke-v1",
@@ -489,9 +510,8 @@ def test_invalid_graph_returns_nonzero_without_partial_result(
     invalid.write_text('{"nodes": []}', encoding="utf-8")
     output = tmp_path / "invalid-output"
 
-    exit_code = main(
+    exit_code = bench_main(
         [
-            "benchmark",
             "evaluate",
             "--suite",
             str(SMOKE_SUITE),
@@ -518,7 +538,7 @@ def test_readme_smoke_table_matches_measured_values() -> None:
         baseline_predictions=BASELINE_PREDICTIONS,
         candidate_predictions=CANDIDATE_PREDICTIONS,
     )
-    readme = (PACKAGE_ROOT.parent / "README.md").read_text(encoding="utf-8")
+    readme = (_repo_root / "README.md").read_text(encoding="utf-8")
     before = result["metrics"]["baseline"]
     after = result["metrics"]["candidate"]
     expected_rows = (
