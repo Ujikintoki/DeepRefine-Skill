@@ -4,12 +4,14 @@ Usage:
     python eval/benchmarking/cli.py prepare --suite <suite-id> --output-dir <dir>
     python eval/benchmarking/cli.py evaluate --suite <dir> --baseline-graph <f> --candidate-graph <f> --output-dir <dir>
     python eval/benchmarking/cli.py report --result <f> --output <f>
+    python eval/benchmarking/cli.py structeval --graph <f> --output-dir <dir>
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -24,13 +26,27 @@ if __name__ == "__main__":
         sys.path.insert(0, str(eval_root))
 
 try:
+    from .ast_gold import extract_gold, materialize_git_tree, resolve_commit
     from .evaluator import evaluate_suite
     from .prepare import SUPPORTED_SUITES, prepare_suite
     from .report import render_markdown
+    from .structeval import (
+        compare_runs,
+        emit_queries,
+        evaluate_structure,
+        render_structural_report,
+    )
 except ImportError:  # script mode: no parent package context
+    from benchmarking.ast_gold import extract_gold, materialize_git_tree, resolve_commit
     from benchmarking.evaluator import evaluate_suite
     from benchmarking.prepare import SUPPORTED_SUITES, prepare_suite
     from benchmarking.report import render_markdown
+    from benchmarking.structeval import (
+        compare_runs,
+        emit_queries,
+        evaluate_structure,
+        render_structural_report,
+    )
 
 
 def _fail(exc: Exception) -> int:
@@ -133,6 +149,94 @@ def cmd_benchmark_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_structeval(args: argparse.Namespace) -> int:
+    """Evaluate a graph's import subgraph against mechanical AST gold."""
+
+    temp_tree: Path | None = None
+    try:
+        repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd()
+        if args.source_tree:
+            tree_root = Path(args.source_tree).resolve()
+            tag = args.source_tag or ""
+            commit = ""
+        else:
+            tag = args.source_tag or "v0.2.0"
+            commit = resolve_commit(repo_root, tag)
+            tree_root = materialize_git_tree(repo_root, tag)
+            temp_tree = tree_root
+        gold = extract_gold(tree_root, source_tag=tag, commit=commit)
+        result = evaluate_structure(gold, args.graph)
+        if args.baseline_result:
+            baseline = json.loads(
+                Path(args.baseline_result).read_text(encoding="utf-8")
+            )
+            result["transitions"] = compare_runs(baseline, result)
+        output_dir = Path(args.output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        result_path = output_dir / "structeval_result.json"
+        report_path = output_dir / "structural_report.md"
+        _write_json(result_path, result)
+        report_path.write_text(render_structural_report(result), encoding="utf-8")
+        queries = 0
+        if args.emit_queries:
+            queries = emit_queries(result, args.emit_queries)
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        return _fail(exc)
+    finally:
+        if temp_tree is not None:
+            shutil.rmtree(temp_tree, ignore_errors=True)
+    print(f"Structeval result: {result_path}")
+    print(f"Markdown report: {report_path}")
+    if args.emit_queries:
+        print(f"Refinement queries ({queries}): {args.emit_queries}")
+    return 0
+
+
+def _add_structeval_parser(subparsers: Any) -> None:
+    """Register the structeval subcommand on a subparser collection."""
+
+    parser = subparsers.add_parser(
+        "structeval",
+        help="Evaluate a graph's import subgraph against mechanical AST gold",
+    )
+    parser.add_argument(
+        "--graph", required=True, help="Graphify graph.json to evaluate"
+    )
+    parser.add_argument(
+        "--source-tag",
+        default=None,
+        help="Git ref to extract gold from (default: v0.2.0)",
+    )
+    parser.add_argument(
+        "--source-tree",
+        default=None,
+        help="Explicit source tree directory (overrides --source-tag; no git needed)",
+    )
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="Git repository used for tag extraction (default: current directory)",
+    )
+    parser.add_argument(
+        "--baseline-result",
+        default=None,
+        help="Baseline structeval_result.json for the transition diff (Stage 2)",
+    )
+    parser.add_argument(
+        "--emit-queries",
+        default=None,
+        help="Write JSONL refinement queries for missing gold edges to this path",
+    )
+    parser.add_argument("--output-dir", required=True)
+    parser.set_defaults(func=cmd_structeval)
+
+
 def register_benchmark_commands(subparsers: Any) -> None:
     """Register the benchmark command group on an argparse subparser action."""
 
@@ -208,6 +312,8 @@ def register_benchmark_commands(subparsers: Any) -> None:
     report.add_argument("--format", choices=("markdown",), default="markdown")
     report.add_argument("--output", required=True, help="Output file or '-' for stdout")
     report.set_defaults(func=cmd_benchmark_report)
+
+    _add_structeval_parser(commands)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -288,6 +394,8 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument("--format", choices=("markdown",), default="markdown")
     report.add_argument("--output", required=True, help="Output file or '-' for stdout")
     report.set_defaults(func=cmd_benchmark_report)
+
+    _add_structeval_parser(subparsers)
 
     args = parser.parse_args(argv)
     return args.func(args)

@@ -59,7 +59,37 @@ python eval/benchmarking/cli.py report \
   --output eval/results/run-001/report.md
 ```
 
-### 1.2 在 Python 中导入
+### 1.2 结构评测（structeval）——机械 gold，无 LLM
+
+`structeval` 不依赖套件或人工标注：它用 stdlib `ast` 从 pinned 的 git ref（默认 `v0.2.0`）机械枚举 import 子图 gold（模块实体、模块依赖边、模块→符号 import 边），再对给定 graph.json 打出精确的 P/R/F1。import 关系是机械可判定的，所以这里的 precision/recall 是**精确数**，没有"自出考卷"问题。
+
+```bash
+# 评测 v0.2.0 自托管代码图谱（gold 从 tag 现场提取，临时目录用后即删）
+python eval/benchmarking/cli.py structeval \
+  --graph eval/data/v0.2.0-code-graph/graph.json \
+  --output-dir eval/results/v02-structural-baseline
+
+# 为缺失的 gold 边生成 refine 查询集（Stage 2 的输入弹药）
+python eval/benchmarking/cli.py structeval \
+  --graph eval/data/v0.2.0-code-graph/graph.json \
+  --emit-queries eval/results/refine-queries.jsonl \
+  --output-dir eval/results/v02-structural-baseline
+
+# Stage 2（refine 之后）：对比 baseline，输出 transitions（恢复/仍缺失/新增未证实）
+python eval/benchmarking/cli.py structeval \
+  --graph <refined-graph.json> \
+  --baseline-result eval/results/v02-structural-baseline/structeval_result.json \
+  --output-dir eval/results/v02-structural-candidate
+```
+
+指标语义与边界：
+
+- 评测范围只有机械可判定切片：模块实体 + `imports`/`imports_from` 关系边；`calls`/`references`/`rationale_for` 等语义边**不在评测范围**（需抽样人评，属 Stage 3）。
+- `--source-tree` 可显式指定源码目录（CI / 无 tag 场景）；默认走 `git archive <tag>` 运行时提取。
+- 从 gold 缺失边生成的 refine 查询是 **guided recovery**——Stage 2 的 transitions 必须如实报告为 guided 结果。
+- 结果落在 `structeval_result.json` + `structural_report.md`（与套件评测的 `result.json` 不冲突）。
+
+### 1.3 在 Python 中导入
 
 ```python
 import sys
@@ -162,6 +192,8 @@ from eval.benchmarking.graph import ...
 from eval.benchmarking.evaluator import evaluate_suite
 ```
 
+`tests/test_structeval.py` 用同样的方式覆盖结构评测（`structeval`）：AST gold 提取（含函数内 import 与相对导入解析）、手检指标、CLI 冒烟与确定论。
+
 ---
 
 ## 五、设计原则
@@ -183,3 +215,5 @@ from eval.benchmarking.evaluator import evaluate_suite
 | 大型 benchmark（100+ 页） | `eval/data/` + `eval/suites/` | 性能 benchmark + 准确率对比 |
 | CI pipeline | `.github/workflows/` | 自动跑评估 + smoke test |
 | 新 wiki 格式适配器 | `deeprefine_skill/adapters/wiki/` | 实现对应的导入/更新接口 |
+| structeval Stage 2 | 端点就绪后跑 refine → `structeval --baseline-result` | LLM refine 恢复缺失 import 边的 guided transitions |
+| structeval Stage 3 | 抽样人评脚本 | `calls`/`references`/`rationale_for` 语义边 precision |
