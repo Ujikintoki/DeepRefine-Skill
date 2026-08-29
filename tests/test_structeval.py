@@ -20,6 +20,7 @@ _repo_root = Path(__file__).resolve().parent.parent
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+from eval.benchmarking import cli as benchmark_cli
 from eval.benchmarking.ast_gold import extract_gold
 from eval.benchmarking.cli import main as bench_main
 from eval.benchmarking.structeval import (
@@ -244,3 +245,65 @@ def test_emit_queries_and_transition_diff(tmp_path: Path) -> None:
         "pkg/alpha.py -> pkg/ghost.py"
     ]
     assert transitions["unverified_import_edges"]["new_unverified"] == []
+
+
+def test_default_output_dirs_are_repo_anchored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Output defaults anchor to the checkout, not to the caller's cwd."""
+
+    monkeypatch.chdir(tmp_path)
+
+    assert benchmark_cli.EVAL_ROOT == _repo_root / "eval"
+    assert benchmark_cli.REPO_ROOT == _repo_root
+    assert benchmark_cli.RESULTS_DIR == _repo_root / "eval" / "results"
+    assert benchmark_cli.DATA_DIR == _repo_root / "eval" / "data"
+
+    assert benchmark_cli._default_prepare_dir("synthetic-smoke-v1") == (
+        benchmark_cli.DATA_DIR / "prepared" / "synthetic-smoke-v1"
+    )
+    assert benchmark_cli._default_evaluate_dir("synthetic-smoke-v1") == (
+        benchmark_cli.RESULTS_DIR / "suite" / "synthetic-smoke-v1"
+    )
+    assert benchmark_cli._default_structeval_dir(None, None) == (
+        benchmark_cli.RESULTS_DIR / "structeval" / "v0.2.0"
+    )
+    assert benchmark_cli._default_structeval_dir(None, str(tmp_path)).name == "local"
+    assert benchmark_cli._default_structeval_dir("v0.3.0", None).name == "v0.3.0"
+    assert benchmark_cli._default_report_path() == (
+        benchmark_cli.RESULTS_DIR / "report.md"
+    )
+
+
+def test_structeval_defaults_write_under_results_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bare structeval writes under RESULTS_DIR even from an unrelated cwd."""
+
+    tree = tmp_path / "src"
+    _write_tree(tree)
+    graph_path = tmp_path / "graph.json"
+    graph_path.write_text(json.dumps(_graph_fixture()), encoding="utf-8")
+
+    results_root = tmp_path / "results-root"
+    monkeypatch.setattr(benchmark_cli, "RESULTS_DIR", results_root)
+    (tmp_path / "unrelated-cwd").mkdir()
+    monkeypatch.chdir(tmp_path / "unrelated-cwd")
+
+    exit_code = bench_main(
+        [
+            "structeval",
+            "--graph",
+            str(graph_path),
+            "--source-tree",
+            str(tree),
+            "--emit-queries",
+        ]
+    )
+
+    assert exit_code == 0
+    output_dir = results_root / "structeval" / "local"
+    assert (output_dir / "structeval_result.json").is_file()
+    assert (output_dir / "structural_report.md").is_file()
+    queries = (output_dir / "refine-queries.jsonl").read_text(encoding="utf-8")
+    assert "pkg/alpha.py -> pkg/delta.py" in queries

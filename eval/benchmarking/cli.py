@@ -1,10 +1,16 @@
 """Standalone CLI for benchmark evaluation.
 
 Usage:
-    python eval/benchmarking/cli.py prepare --suite <suite-id> --output-dir <dir>
-    python eval/benchmarking/cli.py evaluate --suite <dir> --baseline-graph <f> --candidate-graph <f> --output-dir <dir>
-    python eval/benchmarking/cli.py report --result <f> --output <f>
-    python eval/benchmarking/cli.py structeval --graph <f> --output-dir <dir>
+    python eval/benchmarking/cli.py prepare --suite <suite-id>
+    python eval/benchmarking/cli.py evaluate --suite <dir> --baseline-graph <f> --candidate-graph <f>
+    python eval/benchmarking/cli.py report --result <f> [--output <f>]
+    python eval/benchmarking/cli.py structeval --graph <f> [--output-dir <dir>]
+
+Input paths (what to grade) stay explicit.  Output paths default to
+repo-anchored locations under ``eval/results/`` and ``eval/data/``; the
+defaults do not depend on the current working directory.  An explicit
+relative ``--output-dir`` / ``--output`` still resolves against the
+caller's cwd, as usual.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ try:
         evaluate_structure,
         render_structural_report,
     )
+    from .suite import resolve_suite_path
 except ImportError:  # script mode: no parent package context
     from benchmarking.ast_gold import extract_gold, materialize_git_tree, resolve_commit
     from benchmarking.evaluator import evaluate_suite
@@ -47,6 +54,34 @@ except ImportError:  # script mode: no parent package context
         evaluate_structure,
         render_structural_report,
     )
+    from benchmarking.suite import resolve_suite_path
+
+
+# Repo-anchored default locations.  suite.py resolves built-in suites the
+# same way: eval defaults must not depend on the caller's cwd, so every
+# output flag derives its fallback from these constants at parse time.
+EVAL_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = EVAL_ROOT.parent
+RESULTS_DIR = EVAL_ROOT / "results"
+DATA_DIR = EVAL_ROOT / "data"
+
+
+def _default_prepare_dir(suite_id: str) -> Path:
+    return DATA_DIR / "prepared" / suite_id
+
+
+def _default_evaluate_dir(suite: str) -> Path:
+    suite_path = resolve_suite_path(suite)
+    return RESULTS_DIR / "suite" / suite_path.parent.name
+
+
+def _default_structeval_dir(source_tag: str | None, source_tree: str | None) -> Path:
+    label = source_tag or ("local" if source_tree else "v0.2.0")
+    return RESULTS_DIR / "structeval" / label
+
+
+def _default_report_path() -> Path:
+    return RESULTS_DIR / "report.md"
 
 
 def _fail(exc: Exception) -> int:
@@ -74,7 +109,7 @@ def cmd_benchmark_prepare(args: argparse.Namespace) -> int:
         destination = prepare_suite(
             args.suite,
             profile,
-            args.output_dir,
+            args.output_dir or _default_prepare_dir(args.suite),
             source=args.source,
         )
     except (OSError, ValueError) as exc:
@@ -112,7 +147,9 @@ def cmd_benchmark_evaluate(args: argparse.Namespace) -> int:
             semantic_model=args.semantic_model,
             metadata=_metadata(args),
         )
-        output_dir = Path(args.output_dir).resolve()
+        output_dir = (
+            Path(args.output_dir) if args.output_dir else _default_evaluate_dir(args.suite)
+        ).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
         result_path = output_dir / "result.json"
         report_path = output_dir / "report.md"
@@ -140,7 +177,9 @@ def cmd_benchmark_report(args: argparse.Namespace) -> int:
         if args.output == "-":
             print(markdown, end="")
         else:
-            output = Path(args.output).resolve()
+            output = (
+                Path(args.output) if args.output else _default_report_path()
+            ).resolve()
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(markdown, encoding="utf-8")
             print(f"Markdown report: {output}")
@@ -154,7 +193,7 @@ def cmd_structeval(args: argparse.Namespace) -> int:
 
     temp_tree: Path | None = None
     try:
-        repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd()
+        repo_root = Path(args.repo_root).resolve() if args.repo_root else REPO_ROOT
         if args.source_tree:
             tree_root = Path(args.source_tree).resolve()
             tag = args.source_tag or ""
@@ -171,15 +210,25 @@ def cmd_structeval(args: argparse.Namespace) -> int:
                 Path(args.baseline_result).read_text(encoding="utf-8")
             )
             result["transitions"] = compare_runs(baseline, result)
-        output_dir = Path(args.output_dir).resolve()
+        output_dir = (
+            Path(args.output_dir)
+            if args.output_dir
+            else _default_structeval_dir(args.source_tag, args.source_tree)
+        ).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
         result_path = output_dir / "structeval_result.json"
         report_path = output_dir / "structural_report.md"
         _write_json(result_path, result)
         report_path.write_text(render_structural_report(result), encoding="utf-8")
         queries = 0
-        if args.emit_queries:
-            queries = emit_queries(result, args.emit_queries)
+        queries_path: Path | None = None
+        if args.emit_queries is not None:
+            queries_path = (
+                Path(args.emit_queries)
+                if args.emit_queries
+                else output_dir / "refine-queries.jsonl"
+            )
+            queries = emit_queries(result, queries_path)
     except (
         OSError,
         RuntimeError,
@@ -193,9 +242,109 @@ def cmd_structeval(args: argparse.Namespace) -> int:
             shutil.rmtree(temp_tree, ignore_errors=True)
     print(f"Structeval result: {result_path}")
     print(f"Markdown report: {report_path}")
-    if args.emit_queries:
-        print(f"Refinement queries ({queries}): {args.emit_queries}")
+    if queries_path is not None:
+        print(f"Refinement queries ({queries}): {queries_path}")
     return 0
+
+
+def _add_prepare_parser(subparsers: Any) -> None:
+    """Register the prepare subcommand on a subparser collection."""
+
+    parser = subparsers.add_parser(
+        "prepare",
+        help="Prepare a deterministic suite from upstream data",
+    )
+    parser.add_argument("--suite", required=True, choices=sorted(SUPPORTED_SUITES))
+    parser.add_argument(
+        "--profile",
+        default=None,
+        choices=("smoke", "quick", "readme"),
+        help="Default: smoke for synthetic, quick for real suites",
+    )
+    parser.add_argument(
+        "--source",
+        default=None,
+        help="Official upstream JSON file (not needed for synthetic-smoke-v1)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help=(
+            "Output directory (default: eval/data/prepared/<suite-id>, "
+            "repo-anchored; it must be empty or absent)"
+        ),
+    )
+    parser.set_defaults(func=cmd_benchmark_prepare)
+
+
+def _add_evaluate_parser(subparsers: Any) -> None:
+    """Register the evaluate subcommand on a subparser collection."""
+
+    parser = subparsers.add_parser(
+        "evaluate",
+        help="Compare baseline and candidate Graphify graph.json files",
+    )
+    parser.add_argument(
+        "--suite",
+        required=True,
+        help="Prepared suite directory, suite.json, or built-in suite ID",
+    )
+    parser.add_argument("--baseline-graph", required=True)
+    parser.add_argument("--candidate-graph", required=True)
+    parser.add_argument("--baseline-predictions", default=None)
+    parser.add_argument("--candidate-predictions", default=None)
+    parser.add_argument(
+        "--baseline-wiki",
+        default=None,
+        help="Optional baseline Wiki directory for local-link integrity checks",
+    )
+    parser.add_argument(
+        "--candidate-wiki",
+        default=None,
+        help="Optional candidate Wiki directory for local-link integrity checks",
+    )
+    parser.add_argument(
+        "--semantic-model",
+        default=None,
+        help="Opt in to G-BERTScore with this bert-score model (for example roberta-large)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help=(
+            "Output directory (default: eval/results/suite/<suite-name>, "
+            "repo-anchored)"
+        ),
+    )
+    parser.add_argument("--graphify-version", default=None)
+    parser.add_argument("--deeprefine-version", default=None)
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--temperature", type=float, default=None)
+    parser.add_argument("--prompt-config-hash", default=None)
+    parser.add_argument("--llm-calls", type=int, default=0)
+    parser.add_argument("--input-tokens", type=int, default=0)
+    parser.add_argument("--output-tokens", type=int, default=0)
+    parser.set_defaults(func=cmd_benchmark_evaluate)
+
+
+def _add_report_parser(subparsers: Any) -> None:
+    """Register the report subcommand on a subparser collection."""
+
+    parser = subparsers.add_parser(
+        "report",
+        help="Render one or more result.json files as Markdown",
+    )
+    parser.add_argument("--result", action="append", required=True)
+    parser.add_argument("--format", choices=("markdown",), default="markdown")
+    parser.add_argument(
+        "--output",
+        default=None,
+        help=(
+            "Output file (default: eval/results/report.md, repo-anchored) "
+            "or '-' for stdout"
+        ),
+    )
+    parser.set_defaults(func=cmd_benchmark_report)
 
 
 def _add_structeval_parser(subparsers: Any) -> None:
@@ -221,7 +370,7 @@ def _add_structeval_parser(subparsers: Any) -> None:
     parser.add_argument(
         "--repo-root",
         default=None,
-        help="Git repository used for tag extraction (default: current directory)",
+        help="Git repository used for tag extraction (default: this repository's root)",
     )
     parser.add_argument(
         "--baseline-result",
@@ -230,10 +379,22 @@ def _add_structeval_parser(subparsers: Any) -> None:
     )
     parser.add_argument(
         "--emit-queries",
+        nargs="?",
+        const="",
         default=None,
-        help="Write JSONL refinement queries for missing gold edges to this path",
+        help=(
+            "Write JSONL refinement queries for missing gold edges; the bare "
+            "flag targets <output-dir>/refine-queries.jsonl"
+        ),
     )
-    parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help=(
+            "Output directory (default: eval/results/structeval/<source-tag>, "
+            "or .../local with --source-tree; repo-anchored)"
+        ),
+    )
     parser.set_defaults(func=cmd_structeval)
 
 
@@ -245,74 +406,9 @@ def register_benchmark_commands(subparsers: Any) -> None:
         help="Prepare and evaluate lightweight graph-quality benchmarks",
     )
     commands = parser.add_subparsers(dest="benchmark_cmd", required=True)
-
-    prepare = commands.add_parser(
-        "prepare",
-        help="Prepare a deterministic suite from upstream data",
-    )
-    prepare.add_argument("--suite", required=True, choices=sorted(SUPPORTED_SUITES))
-    prepare.add_argument(
-        "--profile",
-        default=None,
-        choices=("smoke", "quick", "readme"),
-        help="Default: smoke for synthetic, quick for real suites",
-    )
-    prepare.add_argument(
-        "--source",
-        default=None,
-        help="Official upstream JSON file (not needed for synthetic-smoke-v1)",
-    )
-    prepare.add_argument("--output-dir", required=True)
-    prepare.set_defaults(func=cmd_benchmark_prepare)
-
-    evaluate = commands.add_parser(
-        "evaluate",
-        help="Compare baseline and candidate Graphify graph.json files",
-    )
-    evaluate.add_argument(
-        "--suite",
-        required=True,
-        help="Prepared suite directory, suite.json, or built-in suite ID",
-    )
-    evaluate.add_argument("--baseline-graph", required=True)
-    evaluate.add_argument("--candidate-graph", required=True)
-    evaluate.add_argument("--baseline-predictions", default=None)
-    evaluate.add_argument("--candidate-predictions", default=None)
-    evaluate.add_argument(
-        "--baseline-wiki",
-        default=None,
-        help="Optional baseline Wiki directory for local-link integrity checks",
-    )
-    evaluate.add_argument(
-        "--candidate-wiki",
-        default=None,
-        help="Optional candidate Wiki directory for local-link integrity checks",
-    )
-    evaluate.add_argument(
-        "--semantic-model",
-        default=None,
-        help="Opt in to G-BERTScore with this bert-score model (for example roberta-large)",
-    )
-    evaluate.add_argument("--output-dir", required=True)
-    evaluate.add_argument("--graphify-version", default=None)
-    evaluate.add_argument("--deeprefine-version", default=None)
-    evaluate.add_argument("--model", default=None)
-    evaluate.add_argument("--temperature", type=float, default=None)
-    evaluate.add_argument("--prompt-config-hash", default=None)
-    evaluate.add_argument("--llm-calls", type=int, default=0)
-    evaluate.add_argument("--input-tokens", type=int, default=0)
-    evaluate.add_argument("--output-tokens", type=int, default=0)
-    evaluate.set_defaults(func=cmd_benchmark_evaluate)
-
-    report = commands.add_parser(
-        "report",
-        help="Render one or more result.json files as Markdown",
-    )
-    report.add_argument("--result", action="append", required=True)
-    report.add_argument("--format", choices=("markdown",), default="markdown")
-    report.add_argument("--output", required=True, help="Output file or '-' for stdout")
-    report.set_defaults(func=cmd_benchmark_report)
-
+    _add_prepare_parser(commands)
+    _add_evaluate_parser(commands)
+    _add_report_parser(commands)
     _add_structeval_parser(commands)
 
 
@@ -325,76 +421,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # prepare
-    prepare = subparsers.add_parser(
-        "prepare",
-        help="Prepare a deterministic suite from upstream data",
-    )
-    prepare.add_argument("--suite", required=True, choices=sorted(SUPPORTED_SUITES))
-    prepare.add_argument(
-        "--profile",
-        default=None,
-        choices=("smoke", "quick", "readme"),
-        help="Default: smoke for synthetic, quick for real suites",
-    )
-    prepare.add_argument(
-        "--source",
-        default=None,
-        help="Official upstream JSON file (not needed for synthetic-smoke-v1)",
-    )
-    prepare.add_argument("--output-dir", required=True)
-    prepare.set_defaults(func=cmd_benchmark_prepare)
-
-    # evaluate
-    evaluate = subparsers.add_parser(
-        "evaluate",
-        help="Compare baseline and candidate Graphify graph.json files",
-    )
-    evaluate.add_argument(
-        "--suite",
-        required=True,
-        help="Prepared suite directory, suite.json, or built-in suite ID",
-    )
-    evaluate.add_argument("--baseline-graph", required=True)
-    evaluate.add_argument("--candidate-graph", required=True)
-    evaluate.add_argument("--baseline-predictions", default=None)
-    evaluate.add_argument("--candidate-predictions", default=None)
-    evaluate.add_argument(
-        "--baseline-wiki",
-        default=None,
-        help="Optional baseline Wiki directory for local-link integrity checks",
-    )
-    evaluate.add_argument(
-        "--candidate-wiki",
-        default=None,
-        help="Optional candidate Wiki directory for local-link integrity checks",
-    )
-    evaluate.add_argument(
-        "--semantic-model",
-        default=None,
-        help="Opt in to G-BERTScore with this bert-score model (for example roberta-large)",
-    )
-    evaluate.add_argument("--output-dir", required=True)
-    evaluate.add_argument("--graphify-version", default=None)
-    evaluate.add_argument("--deeprefine-version", default=None)
-    evaluate.add_argument("--model", default=None)
-    evaluate.add_argument("--temperature", type=float, default=None)
-    evaluate.add_argument("--prompt-config-hash", default=None)
-    evaluate.add_argument("--llm-calls", type=int, default=0)
-    evaluate.add_argument("--input-tokens", type=int, default=0)
-    evaluate.add_argument("--output-tokens", type=int, default=0)
-    evaluate.set_defaults(func=cmd_benchmark_evaluate)
-
-    # report
-    report = subparsers.add_parser(
-        "report",
-        help="Render one or more result.json files as Markdown",
-    )
-    report.add_argument("--result", action="append", required=True)
-    report.add_argument("--format", choices=("markdown",), default="markdown")
-    report.add_argument("--output", required=True, help="Output file or '-' for stdout")
-    report.set_defaults(func=cmd_benchmark_report)
-
+    _add_prepare_parser(subparsers)
+    _add_evaluate_parser(subparsers)
+    _add_report_parser(subparsers)
     _add_structeval_parser(subparsers)
 
     args = parser.parse_args(argv)

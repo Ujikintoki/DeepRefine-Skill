@@ -41,45 +41,52 @@ eval/
 评估管线已迁移到 `eval/benchmarking/`，作为独立脚本运行：
 
 ```bash
-# 准备测试套件
+# 准备测试套件（默认输出 eval/data/prepared/synthetic-smoke-v1/；目标目录非空即拒，重跑需先清空或显式换目录）
 python eval/benchmarking/cli.py prepare \
-  --suite synthetic-smoke-v1 \
-  --output-dir eval/results/synthetic-smoke-v1
+  --suite synthetic-smoke-v1
 
-# 运行评估
+# 运行评估（默认输出 eval/results/suite/<套件名>/）
 python eval/benchmarking/cli.py evaluate \
-  --suite eval/results/synthetic-smoke-v1 \
+  --suite eval/data/prepared/synthetic-smoke-v1 \
   --baseline-graph eval/suites/synthetic-smoke-v1/baseline_graph.json \
-  --candidate-graph eval/suites/synthetic-smoke-v1/candidate_graph.json \
-  --output-dir eval/results/run-001
+  --candidate-graph eval/suites/synthetic-smoke-v1/candidate_graph.json
 
-# 生成报告
+# 生成报告（默认输出 eval/results/report.md；--output - 打到 stdout）
 python eval/benchmarking/cli.py report \
-  --result eval/results/run-001/result.json \
-  --output eval/results/run-001/report.md
+  --result eval/results/suite/synthetic-smoke-v1/result.json
 ```
+
+**默认目录布局（输入显式、输出默认）**："评什么"必须显式声明（`--graph`/`--suite`/`--baseline-graph` 等输入参数），"结果写到哪"永远有规范默认——所有输出默认锚定仓库内的 `eval/results/` 与 `eval/data/prepared/`（均在 `.gitignore` 中：产物留本地、不进 git，进 git 的只有蒸馏后写进文档的数字），且与启动命令时所在的目录无关。显式给出的相对路径仍按当前目录解析（标准 CLI 惯例）。
+
+```
+eval/results/
+├── structeval/<source-tag>/     # structeval_result.json + structural_report.md (+ refine-queries.jsonl)
+├── suite/<套件名>/               # result.json + report.md
+└── report.md                    # report 子命令默认输出
+eval/data/prepared/<suite-id>/   # prepare 子命令默认输出
+```
+
+变体 run（如 Stage 2 的 refined 图）用显式 `--output-dir` 区分，例如 `eval/results/structeval/v0.2.0-refined/`。
 
 ### 1.2 结构评测（structeval）——机械 gold，无 LLM
 
 `structeval` 不依赖套件或人工标注：它用 stdlib `ast` 从 pinned 的 git ref（默认 `v0.2.0`）机械枚举 import 子图 gold（模块实体、模块依赖边、模块→符号 import 边），再对给定 graph.json 打出精确的 P/R/F1。import 关系是机械可判定的，所以这里的 precision/recall 是**精确数**，没有"自出考卷"问题。
 
 ```bash
-# 评测 v0.2.0 自托管代码图谱（gold 从 tag 现场提取，临时目录用后即删）
+# 评测 v0.2.0 自托管代码图谱（gold 从 tag 现场提取，临时目录用后即删；默认输出 eval/results/structeval/v0.2.0/）
 python eval/benchmarking/cli.py structeval \
-  --graph eval/data/v0.2.0-code-graph/graph.json \
-  --output-dir eval/results/v02-structural-baseline
+  --graph eval/data/v0.2.0-code-graph/graph.json
 
-# 为缺失的 gold 边生成 refine 查询集（Stage 2 的输入弹药）
+# 为缺失的 gold 边生成 refine 查询集（Stage 2 的输入弹药；bare --emit-queries → 写入输出目录内 refine-queries.jsonl）
 python eval/benchmarking/cli.py structeval \
   --graph eval/data/v0.2.0-code-graph/graph.json \
-  --emit-queries eval/results/refine-queries.jsonl \
-  --output-dir eval/results/v02-structural-baseline
+  --emit-queries
 
 # Stage 2（refine 之后）：对比 baseline，输出 transitions（恢复/仍缺失/新增未证实）
 python eval/benchmarking/cli.py structeval \
   --graph <refined-graph.json> \
-  --baseline-result eval/results/v02-structural-baseline/structeval_result.json \
-  --output-dir eval/results/v02-structural-candidate
+  --baseline-result eval/results/structeval/v0.2.0/structeval_result.json \
+  --output-dir eval/results/structeval/v0.2.0-refined
 ```
 
 指标语义与边界：
@@ -87,7 +94,7 @@ python eval/benchmarking/cli.py structeval \
 - 评测范围只有机械可判定切片：模块实体 + `imports`/`imports_from` 关系边；`calls`/`references`/`rationale_for` 等语义边**不在评测范围**（需抽样人评，属 Stage 3）。
 - `--source-tree` 可显式指定源码目录（CI / 无 tag 场景）；默认走 `git archive <tag>` 运行时提取。
 - 从 gold 缺失边生成的 refine 查询是 **guided recovery**——Stage 2 的 transitions 必须如实报告为 guided 结果。
-- 结果落在 `structeval_result.json` + `structural_report.md`（与套件评测的 `result.json` 不冲突）。
+- 结果落在 `structeval_result.json` + `structural_report.md`（默认 `eval/results/structeval/<tag>/`，与套件评测的 `result.json` 不冲突）。
 
 ### 1.3 在 Python 中导入
 
@@ -203,6 +210,7 @@ from eval.benchmarking.evaluator import evaluate_suite
 3. **独立脚本，非 CLI 子命令** — 评估管线不注册到 `deeprefine` CLI，两种等价调用：`python eval/benchmarking/cli.py ...`（脚本模式）或仓库根下 `python -m eval.benchmarking.cli ...`（模块模式）
 4. **测试套件可追溯** — `suites/` 中的小型合成数据进 git，大型真实数据通过 `prepare.py` 从上游下载
 5. **仅源码仓可用（by design）** — wheel 中不含 `eval/`，因此 benchmark 引擎、内置套件与相关测试只能在源码 checkout 中运行；内置套件路径由 `suite.py` 相对 `__file__` 解析
+6. **输入显式、输出默认** — "评什么"（`--graph`/`--suite`/输入图）必须显式声明；产物路径默认仓库锚定（`eval/results/`、`eval/data/prepared/`），不随启动目录漂移，默认值由 `cli.py` 顶部常量单点定义（四个子命令解析器共用同一组 builder）
 
 ---
 
