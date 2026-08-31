@@ -21,12 +21,23 @@ from atlas_rag.vectorstore.embedding_model import BaseEmbeddingModel
 def load_graphify_json(path: Path) -> tuple[dict[str, Any], nx.DiGraph]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     links_key = "links" if "links" in raw else "edges"
-    # node_link_graph returns Graph/ DiGraph depending on attrs; force DiGraph
+    # node_link_graph returns Graph/DiGraph depending on attrs; force DiGraph.
+    # The graphify export writes "directed": false even though links carry a
+    # direction (relation labels like depends_on), so node_link_graph returns
+    # an undirected Graph and nx.DiGraph(base) would materialize BOTH
+    # directions (890 -> 1780 edges). Rebuild from the raw links instead so
+    # the JSON's own source->target orientation is preserved exactly.
     base = json_graph.node_link_graph(raw, edges=links_key, directed=True)
-    if not isinstance(base, nx.DiGraph):
-        kg = nx.DiGraph(base)
-    else:
+    if isinstance(base, nx.DiGraph):
         kg = base
+    else:
+        kg = nx.DiGraph()
+        kg.add_nodes_from(base.nodes(data=True))
+        for link in raw.get(links_key, []):
+            attrs = {
+                k: v for k, v in link.items() if k not in ("source", "target", "key")
+            }
+            kg.add_edge(link["source"], link["target"], **attrs)
 
     id_to_meta = {n.get("id"): n for n in raw.get("nodes", []) if n.get("id")}
 
