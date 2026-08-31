@@ -18,7 +18,12 @@ from deeprefine_skill.adapters.graphify.adapter import (
     sync_kg_to_graphify,
 )
 from deeprefine_skill.core.action_review import write_review_files
-from deeprefine_skill.core.history import append_history, mark_refined, query_id
+from deeprefine_skill.core.history import (
+    append_history,
+    mark_refined,
+    pending_queries,
+    query_id,
+)
 from deeprefine_skill.core.paths import checkpoints_metadata_path, create_checkpoint
 
 
@@ -71,7 +76,10 @@ def _build_openai_client(*, base_url: str, api_key: str) -> OpenAI:
         kwargs["api_key"] = api_key
     elif base_url:
         kwargs["api_key"] = "EMPTY"
-    return OpenAI(**kwargs)
+    # Upstream's GenerationConfig path sends no per-request timeout, so a dead
+    # connection stalls on the SDK default (600s) and silently stretches an
+    # unattended batch. 300s still leaves headroom for the largest 8k-token calls.
+    return OpenAI(timeout=300.0, **kwargs)
 
 
 def make_clients(cfg: dict[str, str]) -> tuple[LLMGenerator, Qwen3Emb]:
@@ -127,6 +135,12 @@ def run_refine(
         max_triple_num_by_step=[5, 10, 15, 20],
         history_horizon_size=4,
         if_gen_answer=False,
+        # Stage 2 Round 1 (2026-08-31): the per-hop judge over-claims
+        # "answerable" on noise-dominated subgraphs, which silently skipped
+        # abduction for queries whose answers are missing by construction.
+        # Always run the abduction/action phase instead. Upstream still skips
+        # when the FIRST hop is judged answerable (hardcoded).
+        skip_action_if_answerable=False,
     )
 
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -242,8 +256,6 @@ def refine_from_history(
         entry = append_history(paths["history"], query, source="deeprefine")
         queries = [entry]
     else:
-        from .history import pending_queries
-
         queries = pending_queries(paths["history"])
         if not queries:
             raise SystemExit(
