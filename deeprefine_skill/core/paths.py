@@ -8,7 +8,9 @@ from pathlib import Path
 
 def find_skill_root() -> Path:
     """Root of this repository (DeepRefine-Skill)."""
-    return Path(__file__).resolve().parents[1]
+    # paths.py lives at <repo>/deeprefine_skill/core/paths.py, so the repo
+    # root is three levels up (core/ -> deeprefine_skill/ -> repo root).
+    return Path(__file__).resolve().parents[2]
 
 
 def find_deeprefine_repo(start: Path | None = None) -> Path:
