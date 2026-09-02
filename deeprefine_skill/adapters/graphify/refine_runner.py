@@ -112,6 +112,7 @@ def run_refine(
     cfg: dict[str, str],
     queries: list[dict[str, Any]],
     rebuild_index: bool = False,
+    retrieval_scope: str = "all",
     base_top_k: int = 5,
     max_hops: int = 4,
     apply: bool = False,
@@ -120,8 +121,19 @@ def run_refine(
         raise FileNotFoundError(f"graphify graph not found: {graph_path}")
 
     llm, encoder = make_clients(cfg)
+    if retrieval_scope != "all":
+        # Scoped corpora live in their own cache namespace: the mtime-based
+        # validity check must never hand a scoped run the default bundle (or
+        # vice versa), and _persist writes back through this same path.
+        cache_pkl = cache_pkl.with_name(
+            f"{cache_pkl.stem}-{retrieval_scope}{cache_pkl.suffix}"
+        )
     raw, data = load_or_build_data(
-        graph_path, cache_pkl, encoder, rebuild=rebuild_index
+        graph_path,
+        cache_pkl,
+        encoder,
+        rebuild=rebuild_index,
+        retrieval_scope=retrieval_scope,
     )
     original_kg = data["KG"].copy()
 
@@ -273,4 +285,9 @@ def refine_from_history(
         queries=queries,
         rebuild_index=rebuild_index,
         apply=apply,
+        # Stage 2 Round 2 (2026-09-01): retrieval corpus governance — the
+        # ablation ladder builds cumulatively on Round 1's
+        # skip_action_if_answerable=False above. Default builds are untouched
+        # (run_refine defaults to retrieval_scope="all").
+        retrieval_scope="code",
     )

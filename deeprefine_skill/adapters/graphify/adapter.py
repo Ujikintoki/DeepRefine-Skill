@@ -68,14 +68,36 @@ def _entity_nodes(kg: nx.DiGraph) -> list[str]:
     ]
 
 
+def _filter_nodes_by_scope(
+    kg: nx.DiGraph, node_list: list[str], retrieval_scope: str
+) -> list[str]:
+    """Restrict the FAISS corpus to one entity family; "all" keeps everything."""
+    if retrieval_scope == "all":
+        return node_list
+    if retrieval_scope != "code":
+        raise ValueError(f"unknown retrieval_scope: {retrieval_scope!r}")
+    # Stage 2 Round 2 (2026-09-01): doc entities (SKILL.md/README, ~200+ of the
+    # 543 baseline nodes) flood the retrieval corpus, and the LLM copies subgraph
+    # entities verbatim — so actions name doc ids instead of real code nodes
+    # (phantom nodes, 0/8 guided recovery in Rounds 0-1).  Edge filtering needs
+    # no separate pass: edge_list already keeps only edges whose both endpoints
+    # survive in node_set.
+    return [
+        n
+        for n in node_list
+        if str(kg.nodes[n].get("source_file", "")).endswith(".py")
+    ]
+
+
 def build_deeprefine_data(
     kg: nx.DiGraph,
     sentence_encoder: BaseEmbeddingModel,
     *,
     normalize_embeddings: bool = False,
     batch_size: int = 64,
+    retrieval_scope: str = "all",
 ) -> dict[str, Any]:
-    node_list = _entity_nodes(kg)
+    node_list = _filter_nodes_by_scope(kg, _entity_nodes(kg), retrieval_scope)
     node_set = set(node_list)
     edge_list = [(u, v) for u, v in kg.edges if u in node_set and v in node_set]
     node_list_string = [kg.nodes[n]["id"] for n in node_list]
@@ -137,6 +159,7 @@ def load_or_build_data(
     sentence_encoder: BaseEmbeddingModel,
     *,
     rebuild: bool = False,
+    retrieval_scope: str = "all",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     graph_mtime = graph_path.stat().st_mtime
     if (
@@ -151,7 +174,9 @@ def load_or_build_data(
         return raw, data
 
     raw, kg = load_graphify_json(graph_path)
-    data = build_deeprefine_data(kg, sentence_encoder)
+    data = build_deeprefine_data(
+        kg, sentence_encoder, retrieval_scope=retrieval_scope
+    )
     cache_pkl.parent.mkdir(parents=True, exist_ok=True)
     with cache_pkl.open("wb") as f:
         pickle.dump({"graphify_raw": raw, "deeprefine_data": data}, f)
