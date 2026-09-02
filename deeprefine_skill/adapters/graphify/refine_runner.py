@@ -192,7 +192,26 @@ def run_refine(
                 query = sample["query"]
                 qid = query_id(query, sample.get("id"))
                 print(f"\n=== [{qid}] {query}")
-                final_answer, _, refinement_result = deeprefine.refine(query=query)
+                try:
+                    final_answer, _, refinement_result = deeprefine.refine(query=query)
+                except Exception as exc:  # noqa: BLE001 - one bad query must not kill the batch
+                    # Upstream raises on malformed LLM output (e.g. an empty
+                    # action response after exhausted API retries). Record the
+                    # failure, keep the query pending so a rerun retries it,
+                    # and preserve dry-run KG isolation.
+                    err = f"{type(exc).__name__}: {exc}"
+                    print(f"  query error: {err}")
+                    record = refinement_to_jsonable(sample, None, None)
+                    record["error"] = err
+                    log_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    log_f.flush()
+                    summary_rows.append(
+                        {"id": qid, "query": query, "steps": 0, "action_count": 0, "error": err}
+                    )
+                    if not apply:
+                        data["KG"] = original_kg.copy()
+                        deeprefine.kg = data["KG"]
+                    continue
                 record = refinement_to_jsonable(sample, final_answer, refinement_result)
                 log_f.write(json.dumps(record, ensure_ascii=False) + "\n")
                 log_f.flush()
