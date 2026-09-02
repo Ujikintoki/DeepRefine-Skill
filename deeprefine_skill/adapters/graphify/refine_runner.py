@@ -9,6 +9,7 @@ from openai import OpenAI
 
 from atlas_rag.llm_generator import GenerationConfig, LLMGenerator
 from atlas_rag.vectorstore.embedding_model import Qwen3Emb
+import autorefiner.src.deeprefine as upstream_deeprefine
 from autorefiner.src.deeprefine import DeepRefine, RetrievalStepResult
 
 from deeprefine_skill.adapters.graphify.adapter import (
@@ -18,6 +19,10 @@ from deeprefine_skill.adapters.graphify.adapter import (
     sync_kg_to_graphify,
 )
 from deeprefine_skill.adapters.graphify.entity_fold import fold_refined_entities
+from deeprefine_skill.adapters.graphify.relation_contract import (
+    apply_relation_contract,
+    relation_labels_from_graph,
+)
 from deeprefine_skill.core.action_review import write_review_files
 from deeprefine_skill.core.history import (
     append_history,
@@ -138,6 +143,29 @@ def run_refine(
         retrieval_scope=retrieval_scope,
     )
     original_kg = data["KG"].copy()
+
+    # Stage 2 Round 4 (2026-09-03): relation-vocabulary contract. Upstream's
+    # action prompt never constrains relation wording, so the same query
+    # proposed `imports_from` in R3 (credited) and `depends_on` in the
+    # identical-config confirm run (invisible — structeval only counts
+    # import-family relations, matching the AST gold). graphify graphs have a
+    # closed relation schema, so invented words are off-schema data; the
+    # contract surfaces the loaded graph's own labels (extracted at run time,
+    # nothing hardcoded — works for any domain). deeprefine.py from-imports
+    # the constant into its own namespace (deeprefine.py:17), so the rebind
+    # must land THERE — patching the defining module would not take effect.
+    # Upstream files stay untouched on disk.
+    contract_labels = relation_labels_from_graph(raw)
+    upstream_deeprefine.REAFINER_KG_REFINEMENT_ACTION_SYSTEM_PROMPT = (
+        apply_relation_contract(
+            upstream_deeprefine.REAFINER_KG_REFINEMENT_ACTION_SYSTEM_PROMPT,
+            contract_labels,
+        )
+    )
+    print(
+        "relation contract: on (Round 4 knob) — labels:",
+        ", ".join(contract_labels) if contract_labels else "(none)",
+    )
 
     deeprefine = DeepRefine(
         data=data,
