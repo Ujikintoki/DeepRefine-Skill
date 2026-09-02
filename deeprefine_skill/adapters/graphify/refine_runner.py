@@ -17,6 +17,7 @@ from deeprefine_skill.adapters.graphify.adapter import (
     save_graphify_json,
     sync_kg_to_graphify,
 )
+from deeprefine_skill.adapters.graphify.entity_fold import fold_refined_entities
 from deeprefine_skill.core.action_review import write_review_files
 from deeprefine_skill.core.history import (
     append_history,
@@ -116,6 +117,7 @@ def run_refine(
     base_top_k: int = 5,
     max_hops: int = 4,
     apply: bool = False,
+    fold_entities: bool = True,
 ) -> dict[str, Any]:
     if not graph_path.is_file():
         raise FileNotFoundError(f"graphify graph not found: {graph_path}")
@@ -161,6 +163,7 @@ def run_refine(
     summary_rows: list[dict[str, Any]] = []
     completed = 0
     meta_path = checkpoints_metadata_path(graph_path.parent.parent)
+    fold_report: dict[str, Any] | None = None
 
     def _persist() -> None:
         if completed == 0:
@@ -168,7 +171,24 @@ def run_refine(
         if not apply:
             return
         data["KG"] = deeprefine.kg
-        nonlocal raw
+        nonlocal raw, fold_report
+        if fold_entities:
+            # Upstream mints a fresh sha256 node for every LLM entity string
+            # (its entity_to_id table is never seeded from the graph), so a
+            # refinement batch leaves duplicate phantom nodes behind. Re-home
+            # them onto baseline twins before writing. Dry-run returns above,
+            # and in-batch upstream behavior stays untouched, so runs remain
+            # R2-comparable.
+            fold_report = fold_refined_entities(
+                deeprefine.kg,
+                {n["id"]: n.get("label") or n["id"] for n in raw.get("nodes", [])},
+            )
+            print(
+                f"  fold: {len(fold_report['folded'])} folded, "
+                f"{len(fold_report['residual'])} residual, "
+                f"{fold_report['edges_remapped']} edges remapped, "
+                f"{fold_report['edges_duplicated_dropped']} duplicates dropped"
+            )
         raw = sync_kg_to_graphify(raw, deeprefine.kg)
         # Per-run pre-state backup: graph.json.bak.<next_seq> = graph exactly
         # as it was before this batch of refinements was written (the seq
@@ -271,6 +291,7 @@ def run_refine(
         "edges": deeprefine.kg.number_of_edges(),
         "queries_processed": len(queries),
         "mode": "apply" if apply else "dry-run",
+        "fold": fold_report,
         "summary": summary_rows,
     }
 
