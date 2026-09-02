@@ -155,6 +155,12 @@ def run_refine(
         # Always run the abduction/action phase instead. Upstream still skips
         # when the FIRST hop is judged answerable (hardcoded).
         skip_action_if_answerable=False,
+        # Stage 2 Round 3 (2026-09-02): the conflict guard keeps only the
+        # first object per (subject, relation), and the kg persists across
+        # queries in a batch — the R2 audit caught it swallowing 3 correct
+        # inserts (sq-003's cli.py -> paths.py shadowed by sq-002; sq-006/007
+        # shadowed by sq-005). Allow multiple objects per (subject, relation).
+        skip_conflict_inserts=False,
     )
 
     log_dir.mkdir(parents=True, exist_ok=True)
