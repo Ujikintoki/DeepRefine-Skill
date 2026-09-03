@@ -792,6 +792,7 @@ def cmd_refine(args: argparse.Namespace) -> int:
         query=args.query,
         rebuild_index=args.rebuild_index,
         apply=args.apply,
+        seed=args.seed,
     )
     print("\n--- DeepRefine summary ---")
     print(f"Mode: {result['mode']}")
@@ -800,6 +801,13 @@ def cmd_refine(args: argparse.Namespace) -> int:
         f"Graph: {result['graph_path']} ({result['nodes']} nodes, {result['edges']} edges)"
     )
     print(f"Log: {result['log_path']}")
+    usage = result.get("usage") or {}
+    if usage:
+        print(f"API usage: {usage['calls']} calls ({usage['errors']} errors), "
+              f"tokens {usage['total_tokens']} "
+              f"(prompt {usage['prompt_tokens']} / completion {usage['completion_tokens']}), "
+              f"api time {usage['elapsed_s']:.1f}s")
+        print(f"Usage log: {result['usage_log_path']}")
     if result["mode"] == "dry-run":
         print(
             "No graph changes applied. Review proposed actions, then run "
@@ -1319,6 +1327,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_refine.add_argument("--project-root", default=None)
     p_refine.add_argument("--rebuild-index", action="store_true")
+    p_refine.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Sampling seed sent with every LLM request (final-config knob; "
+        "omit to keep historical behavior of a server-chosen seed).",
+    )
     p_refine.add_argument(
         "--apply",
         action="store_true",

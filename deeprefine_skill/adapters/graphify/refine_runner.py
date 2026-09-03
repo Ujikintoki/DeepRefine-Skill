@@ -18,6 +18,11 @@ from deeprefine_skill.adapters.graphify.adapter import (
     save_graphify_json,
     sync_kg_to_graphify,
 )
+from deeprefine_skill.adapters.graphify.api_usage import (
+    ApiUsageRecorder,
+    instrument_openai_client,
+    write_usage_log,
+)
 from deeprefine_skill.adapters.graphify.entity_fold import fold_refined_entities
 from deeprefine_skill.adapters.graphify.relation_contract import (
     apply_relation_contract,
@@ -88,7 +93,12 @@ def _build_openai_client(*, base_url: str, api_key: str) -> OpenAI:
     return OpenAI(timeout=300.0, **kwargs)
 
 
-def make_clients(cfg: dict[str, str]) -> tuple[LLMGenerator, Qwen3Emb]:
+def make_clients(
+    cfg: dict[str, str],
+    *,
+    seed: int | None = None,
+    recorder: ApiUsageRecorder | None = None,
+) -> tuple[LLMGenerator, Qwen3Emb]:
     llm_client = _build_openai_client(
         base_url=cfg["DEEPREFINE_LLM_URL"],
         api_key=cfg["DEEPREFINE_LLM_API_KEY"],
@@ -97,10 +107,24 @@ def make_clients(cfg: dict[str, str]) -> tuple[LLMGenerator, Qwen3Emb]:
         base_url=cfg["DEEPREFINE_EMBED_URL"],
         api_key=cfg["DEEPREFINE_EMBED_API_KEY"],
     )
+    if recorder is not None:
+        # Observation layer for the final-config reruns: usage/latency/failures
+        # per HTTP call. Wrapping the client (not the generator) catches LLM
+        # calls AND the embed calls upstream fires during refine (edge
+        # embeddings), plus index builds. Recording never alters the request.
+        instrument_openai_client(llm_client, recorder, kind="llm")
+        instrument_openai_client(embed_client, recorder, kind="embed")
+    gen_kwargs: dict[str, Any] = {"chat_template_kwargs": {"enable_thinking": False}}
+    if seed is not None:
+        # Final-config knob (2026-09-03): GenerationConfig.seed is forwarded
+        # into every request (generation_config.py:132), so the provider-side
+        # RNG is pinned per run instead of being silently server-chosen.
+        # Historical rounds R0..R4-confirm ran without it.
+        gen_kwargs["seed"] = seed
     llm = LLMGenerator(
         client=llm_client,
         model_name=cfg["DEEPREFINE_MODEL"],
-        default_config=GenerationConfig(chat_template_kwargs={"enable_thinking": False}),
+        default_config=GenerationConfig(**gen_kwargs),
     )
     encoder = Qwen3Emb(
         embed_client,
@@ -123,11 +147,14 @@ def run_refine(
     max_hops: int = 4,
     apply: bool = False,
     fold_entities: bool = True,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     if not graph_path.is_file():
         raise FileNotFoundError(f"graphify graph not found: {graph_path}")
 
-    llm, encoder = make_clients(cfg)
+    recorder = ApiUsageRecorder()
+    llm, encoder = make_clients(cfg, seed=seed, recorder=recorder)
+    recorder.phase = "index-build"
     if retrieval_scope != "all":
         # Scoped corpora live in their own cache namespace: the mtime-based
         # validity check must never hand a scoped run the default bundle (or
@@ -166,6 +193,10 @@ def run_refine(
         "relation contract: on (Round 4 knob) — labels:",
         ", ".join(contract_labels) if contract_labels else "(none)",
     )
+    if seed is not None:
+        print(f"seed: {seed} (final-config knob — sent with every LLM request)")
+    else:
+        print("seed: not sent (historical behavior)")
 
     deeprefine = DeepRefine(
         data=data,
@@ -193,11 +224,13 @@ def run_refine(
 
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"refinement_results_{int(time.time())}.jsonl"
+    usage_path = log_path.with_name(log_path.name.replace("refinement_results_", "api_usage_"))
     refined_ids: set[str] = set()
     summary_rows: list[dict[str, Any]] = []
     completed = 0
     meta_path = checkpoints_metadata_path(graph_path.parent.parent)
     fold_report: dict[str, Any] | None = None
+    usage_totals: dict[str, Any] = {}
 
     def _persist() -> None:
         if completed == 0:
@@ -245,6 +278,7 @@ def run_refine(
             for sample in queries:
                 query = sample["query"]
                 qid = query_id(query, sample.get("id"))
+                recorder.phase = f"refine:{qid}"
                 print(f"\n=== [{qid}] {query}")
                 try:
                     final_answer, _, refinement_result = deeprefine.refine(query=query)
@@ -317,6 +351,10 @@ def run_refine(
                     deeprefine.kg = data["KG"]
     finally:
         _persist()
+        recorder.phase = "done"
+        # Written even when a query raises, so a crashed batch still yields
+        # its cost record.
+        usage_totals = write_usage_log(recorder, usage_path)
 
     return {
         "log_path": str(log_path),
@@ -327,6 +365,8 @@ def run_refine(
         "mode": "apply" if apply else "dry-run",
         "fold": fold_report,
         "summary": summary_rows,
+        "usage": usage_totals,
+        "usage_log_path": str(usage_path),
     }
 
 
@@ -337,6 +377,7 @@ def refine_from_history(
     query: str | None = None,
     rebuild_index: bool = False,
     apply: bool = False,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     if query:
         entry = append_history(paths["history"], query, source="deeprefine")
@@ -359,6 +400,7 @@ def refine_from_history(
         queries=queries,
         rebuild_index=rebuild_index,
         apply=apply,
+        seed=seed,
         # Stage 2 Round 2 (2026-09-01): retrieval corpus governance — the
         # ablation ladder builds cumulatively on Round 1's
         # skip_action_if_answerable=False above. Default builds are untouched
