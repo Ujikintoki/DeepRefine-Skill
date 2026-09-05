@@ -258,7 +258,7 @@ def _add_prepare_parser(subparsers: Any) -> None:
     parser.add_argument(
         "--profile",
         default=None,
-        choices=("smoke", "quick", "readme"),
+        choices=("smoke", "quick", "readme", "full"),
         help="Default: smoke for synthetic, quick for real suites",
     )
     parser.add_argument(

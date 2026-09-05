@@ -13,7 +13,7 @@ from .suite import builtin_suite_path, sha256_file
 
 
 SELECTION_SEED = "deeprefine-benchmark-v1"
-SUPPORTED_PROFILES = {"quick", "readme"}
+SUPPORTED_PROFILES = {"quick", "readme", "full"}
 SUPPORTED_SUITES = {
     "synthetic-smoke-v1",
     "redocred-mini-v1",
