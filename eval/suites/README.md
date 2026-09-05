@@ -15,6 +15,11 @@ does not redistribute the original text.
 - Expected input: the official revised dev JSON (`dev_revised.json`), with
   `rel_info.json` in the same directory when human-readable relation names are
   available.
+- Local acquisition (2026-09-04, unattended network): `dev_revised.json`
+  fetched from the upstream repository pinned at commit `ccfb54f`; see
+  `eval/data/redocred/PROVENANCE.md` for hashes and the rel_info.json
+  mirror-validation chain (rel_info.json is not shipped in the upstream repo;
+  the canonical copy lives in the DocRED Google Drive folder).
 
 Review and comply with the dataset repository's current terms and the terms of
 its underlying Wikipedia/Wikidata content before use.
