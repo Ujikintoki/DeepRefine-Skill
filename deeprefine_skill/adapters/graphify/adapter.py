@@ -117,15 +117,28 @@ def build_deeprefine_data(
     node_faiss_index = build_faiss_index_flat(node_embeddings)
     edge_faiss_index = build_faiss_index_flat(edge_embeddings)
 
-    passage_id = "__deeprefine_passage__"
-    if passage_id not in kg.nodes:
-        kg.add_node(
-            passage_id,
-            id="graphify knowledge graph",
-            type="passage",
-            file_id=None,
-        )
-    text_dict = {passage_id: "graphify knowledge graph"}
+    # Passage nodes carry document text for text-grounded refine: an entity
+    # node's file_id must equal a passage node's graph key, and upstream's
+    # _collect_original_text reads the passage's "id" attr (which
+    # load_graphify_json sets from its label). Graphs without passage nodes
+    # keep the legacy single placeholder, so historical graphs (Stage 2
+    # rounds) index the same dummy passage as before.
+    text_dict = {
+        nid: str(kg.nodes[nid].get("id") or "")
+        for nid in kg.nodes
+        if kg.nodes[nid].get("type") == "passage"
+        and str(kg.nodes[nid].get("id") or "").strip()
+    }
+    if not text_dict:
+        passage_id = "__deeprefine_passage__"
+        if passage_id not in kg.nodes:
+            kg.add_node(
+                passage_id,
+                id="graphify knowledge graph",
+                type="passage",
+                file_id=None,
+            )
+        text_dict = {passage_id: "graphify knowledge graph"}
     text_embeddings = compute_text_embeddings(
         list(text_dict.values()),
         sentence_encoder,
