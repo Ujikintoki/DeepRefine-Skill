@@ -378,6 +378,7 @@ def refine_from_history(
     rebuild_index: bool = False,
     apply: bool = False,
     seed: int | None = None,
+    retrieval_scope: str = "code",
 ) -> dict[str, Any]:
     if query:
         entry = append_history(paths["history"], query, source="deeprefine")
@@ -403,7 +404,7 @@ def refine_from_history(
         seed=seed,
         # Stage 2 Round 2 (2026-09-01): retrieval corpus governance — the
         # ablation ladder builds cumulatively on Round 1's
-        # skip_action_if_answerable=False above. Default builds are untouched
-        # (run_refine defaults to retrieval_scope="all").
-        retrieval_scope="code",
+        # skip_action_if_answerable=False above. Default stays "code" for
+        # historical builds; wiki/KB sandboxes pass "all" (--retrieval-scope).
+        retrieval_scope=retrieval_scope,
     )

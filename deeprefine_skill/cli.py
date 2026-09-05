@@ -793,6 +793,7 @@ def cmd_refine(args: argparse.Namespace) -> int:
         rebuild_index=args.rebuild_index,
         apply=args.apply,
         seed=args.seed,
+        retrieval_scope=args.retrieval_scope,
     )
     print("\n--- DeepRefine summary ---")
     print(f"Mode: {result['mode']}")
@@ -1327,6 +1328,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_refine.add_argument("--project-root", default=None)
     p_refine.add_argument("--rebuild-index", action="store_true")
+    p_refine.add_argument(
+        "--retrieval-scope",
+        choices=("all", "code"),
+        default="code",
+        help="Retrieval corpus family: 'code' keeps only .py-source entities "
+        "(Stage 2 default), 'all' keeps every entity node (wiki/KB graphs).",
+    )
     p_refine.add_argument(
         "--seed",
         type=int,
