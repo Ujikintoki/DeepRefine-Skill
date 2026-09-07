@@ -794,6 +794,7 @@ def cmd_refine(args: argparse.Namespace) -> int:
         apply=args.apply,
         seed=args.seed,
         retrieval_scope=args.retrieval_scope,
+        gen_answer=args.gen_answer,
     )
     print("\n--- DeepRefine summary ---")
     print(f"Mode: {result['mode']}")
@@ -1341,6 +1342,13 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Sampling seed sent with every LLM request (final-config knob; "
         "omit to keep historical behavior of a server-chosen seed).",
+    )
+    p_refine.add_argument(
+        "--gen-answer",
+        action="store_true",
+        help="Generate an answer at each retrieval step (upstream if_gen_answer). "
+        "Off by default: refine actions alone never needed answers. Experiment 2 "
+        "(2Wiki QA) reads history[0].answer as the pre-refine draft answer.",
     )
     p_refine.add_argument(
         "--apply",

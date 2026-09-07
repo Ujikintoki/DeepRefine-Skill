@@ -152,6 +152,10 @@ def run_refine(
     apply: bool = False,
     fold_entities: bool = True,
     seed: int | None = None,
+    # Experiment 2 (2Wiki QA, HANDOFF_8 §4): the reader IS the engine's own
+    # answer generation. Default False keeps every historical behavior
+    # (Re-DocRED Phase 2 and Stage 2 refine actions only, no answers).
+    gen_answer: bool = False,
 ) -> dict[str, Any]:
     if not graph_path.is_file():
         raise FileNotFoundError(f"graphify graph not found: {graph_path}")
@@ -211,7 +215,7 @@ def run_refine(
         max_triple_num=20,
         max_triple_num_by_step=[5, 10, 15, 20],
         history_horizon_size=4,
-        if_gen_answer=False,
+        if_gen_answer=gen_answer,
         # Stage 2 Round 1 (2026-08-31): the per-hop judge over-claims
         # "answerable" on noise-dominated subgraphs, which silently skipped
         # abduction for queries whose answers are missing by construction.
@@ -396,6 +400,7 @@ def refine_from_history(
     apply: bool = False,
     seed: int | None = None,
     retrieval_scope: str = "code",
+    gen_answer: bool = False,
 ) -> dict[str, Any]:
     if query:
         entry = append_history(paths["history"], query, source="deeprefine")
@@ -424,4 +429,5 @@ def refine_from_history(
         # skip_action_if_answerable=False above. Default stays "code" for
         # historical builds; wiki/KB sandboxes pass "all" (--retrieval-scope).
         retrieval_scope=retrieval_scope,
+        gen_answer=gen_answer,
     )
