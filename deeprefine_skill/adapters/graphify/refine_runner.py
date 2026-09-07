@@ -24,6 +24,10 @@ from deeprefine_skill.adapters.graphify.api_usage import (
     write_usage_log,
 )
 from deeprefine_skill.adapters.graphify.entity_fold import fold_refined_entities
+from deeprefine_skill.adapters.graphify.parallel_links import (
+    collect_parallel_links,
+    reinject_parallel_links,
+)
 from deeprefine_skill.adapters.graphify.relation_contract import (
     apply_relation_contract,
     relation_labels_from_graph,
@@ -256,7 +260,20 @@ def run_refine(
                 f"{fold_report['edges_remapped']} edges remapped, "
                 f"{fold_report['edges_duplicated_dropped']} duplicates dropped"
             )
+        # Baseline links that DiGraph's one-edge-per-pair rule would drop on
+        # this roundtrip are stashed pre-sync and re-injected after it — the
+        # paper's KB is a set of triples, so parallel (h,r,t) elements are
+        # legal facts; sync must not lose them (see parallel_links.py).
+        parallels = collect_parallel_links(raw)
         raw = sync_kg_to_graphify(raw, deeprefine.kg)
+        parallel_report = reinject_parallel_links(raw, deeprefine.kg, parallels)
+        if parallel_report["collected"]:
+            print(
+                f"  parallel links: {parallel_report['re_injected']} re-injected, "
+                f"{parallel_report['already_present']} already present, "
+                f"{parallel_report['pair_deleted']} pair deleted, "
+                f"{parallel_report['endpoint_gone']} endpoint gone"
+            )
         # Per-run pre-state backup: graph.json.bak.<next_seq> = graph exactly
         # as it was before this batch of refinements was written (the seq
         # matches the post-state checkpoint created below).
