@@ -27,7 +27,24 @@ import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
+
+# Directories that hold the importable package without contributing to its
+# module names: ``src/urllib3/x.py`` must resolve as ``urllib3.x`` or every
+# absolute in-package import silently misses the module table below
+# (route-a dry-run 2026-09-05: up to 138 of 335 edges lost per repo).
+# ``src/__init__.py`` (the container itself a package) is left unstripped.
+CONTAINER_TOP_DIRS: tuple[str, ...] = ("src", "lib")
+
+# Route-A pre-registered scope rule (docs/tmp/route-a-selection.md §5):
+# developer surfaces excluded from BOTH gold extraction and the graphify
+# corpus, so the exam and the corpus always see the same tree.  Opt-in per
+# call — the default keeps v0.2.0 gold byte-identical (13/14/55).
+ROUTE_A_EXCLUDED_TOP_DIRS: tuple[str, ...] = (
+    "tests", "test", "docs", "doc", "examples", "example",
+    "benchmarks", "benchmark", "tools", "scripts",
+    "requirements", "ci_tools", "packaging",
+)
 
 
 @dataclass(frozen=True)
@@ -97,15 +114,17 @@ def _collect_bound_names(tree: ast.Module) -> tuple[str, ...]:
                 for alias in stmt.names:
                     if alias.name != "*":
                         names.add(alias.asname or alias.name)
-            elif isinstance(stmt, (ast.If, ast.Try, ast.With, ast.AsyncWith)):
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
                 visit_body(stmt.body)
-                if isinstance(stmt, ast.Try):
-                    for handler in stmt.handlers:
-                        visit_body(handler.body)
-                    visit_body(stmt.orelse)
-                    visit_body(stmt.finalbody)
-                else:
-                    visit_body(stmt.orelse)
+            elif isinstance(stmt, ast.If):
+                visit_body(stmt.body)
+                visit_body(stmt.orelse)
+            elif isinstance(stmt, ast.Try):
+                visit_body(stmt.body)
+                for handler in stmt.handlers:
+                    visit_body(handler.body)
+                visit_body(stmt.orelse)
+                visit_body(stmt.finalbody)
 
     visit_body(tree.body)
     return tuple(sorted(names))
@@ -141,10 +160,18 @@ def extract_gold(
     *,
     source_tag: str = "",
     commit: str = "",
+    excluded_top_dirs: Sequence[str] = (),
 ) -> GoldAST:
     """Extract complete import-subgraph gold from a Python source tree.
 
     Deterministic: the same tree always yields the same gold.
+
+    ``excluded_top_dirs`` drops whole top-level directories (tests, docs,
+    ...) from the gold.  Callers must pass the same rule they use to build
+    the graphify corpus so the exam and the corpus see one tree.  Leading
+    ``src``/``lib`` container components (CONTAINER_TOP_DIRS) are always
+    stripped from module names — ``src/pkg/x.py`` resolves as ``pkg.x`` —
+    but never appear in the returned module paths, which stay tree-relative.
     """
 
     root = Path(source_tree)
@@ -156,16 +183,24 @@ def extract_gold(
         for path in root.rglob("*.py")
         if path.is_file()
     )
+    if excluded_top_dirs:
+        excluded = frozenset(excluded_top_dirs)
+        py_files = [rel for rel in py_files if rel.split("/", 1)[0] not in excluded]
     if not py_files:
         raise ValueError(f"No Python files under source tree: {root}")
+
+    def module_parts(rel: str) -> tuple[str, ...]:
+        parts = Path(rel).with_suffix("").parts
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        if len(parts) > 1 and parts[0] in CONTAINER_TOP_DIRS:
+            parts = parts[1:]
+        return parts
 
     # Dotted module name -> file path, packages included via __init__.py.
     dotted: dict[str, str] = {}
     for rel in py_files:
-        parts = Path(rel).with_suffix("").parts
-        if parts[-1] == "__init__":
-            parts = parts[:-1]
-        dotted[".".join(parts)] = rel
+        dotted[".".join(module_parts(rel))] = rel
 
     module_edges: set[tuple[str, str]] = set()
     symbol_edges: set[tuple[str, str, str]] = set()
@@ -174,7 +209,10 @@ def extract_gold(
     for rel in py_files:
         tree = ast.parse((root / rel).read_text(encoding="utf-8"))
         symbols[rel] = _collect_bound_names(tree)
-        package_parts = tuple(Path(rel).parts[:-1])
+        dir_parts = Path(rel).parts[:-1]
+        if len(dir_parts) > 1 and dir_parts[0] in CONTAINER_TOP_DIRS:
+            dir_parts = dir_parts[1:]
+        package_parts = tuple(dir_parts)
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -275,8 +313,10 @@ def gold_to_jsonable(gold: GoldAST) -> dict[str, object]:
 
 
 __all__ = [
+    "CONTAINER_TOP_DIRS",
     "GoldAST",
     "GoldImport",
+    "ROUTE_A_EXCLUDED_TOP_DIRS",
     "extract_gold",
     "gold_to_jsonable",
     "materialize_git_tree",

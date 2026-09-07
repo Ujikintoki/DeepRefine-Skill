@@ -21,7 +21,7 @@ if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 from eval.benchmarking import cli as benchmark_cli
-from eval.benchmarking.ast_gold import extract_gold
+from eval.benchmarking.ast_gold import ROUTE_A_EXCLUDED_TOP_DIRS, extract_gold
 from eval.benchmarking.cli import main as bench_main
 from eval.benchmarking.structeval import (
     compare_runs,
@@ -100,6 +100,111 @@ def test_extract_gold_resolves_relative_and_skips_external(tmp_path: Path) -> No
         ("pkg2/one.py", "pkg2/three.py"),
     }
     assert gold.symbol_imports() == {("pkg2/one.py", "pkg2/two.py", "thing")}
+
+
+def test_extract_gold_src_layout_strips_container_and_resolves_absolute(
+    tmp_path: Path,
+) -> None:
+    """src/ container prefix is stripped so absolute in-package imports hit."""
+
+    pkg = tmp_path / "src" / "pkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "api.py").write_text(
+        "import pkg.engine\nfrom pkg import cache\n", encoding="utf-8"
+    )
+    (pkg / "engine.py").write_text("", encoding="utf-8")
+    (pkg / "cache.py").write_text("", encoding="utf-8")
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_api.py").write_text(
+        "from pkg.api import run\n", encoding="utf-8"
+    )
+
+    gold = extract_gold(tmp_path)
+
+    # Default keeps every tree (v0.2.0 behaviour); module paths stay
+    # tree-relative while names resolve container-free.
+    assert gold.modules == (
+        "src/pkg/__init__.py",
+        "src/pkg/api.py",
+        "src/pkg/cache.py",
+        "src/pkg/engine.py",
+        "tests/test_api.py",
+    )
+    assert gold.module_dependencies() == {
+        ("src/pkg/api.py", "src/pkg/engine.py"),
+        ("src/pkg/api.py", "src/pkg/cache.py"),
+        ("tests/test_api.py", "src/pkg/api.py"),
+    }
+
+    scoped = extract_gold(tmp_path, excluded_top_dirs=("tests",))
+    assert scoped.modules == (
+        "src/pkg/__init__.py",
+        "src/pkg/api.py",
+        "src/pkg/cache.py",
+        "src/pkg/engine.py",
+    )
+    assert scoped.module_dependencies() == {
+        ("src/pkg/api.py", "src/pkg/engine.py"),
+        ("src/pkg/api.py", "src/pkg/cache.py"),
+    }
+
+
+def test_extract_gold_lib_layout_resolves_relative_under_container(
+    tmp_path: Path,
+) -> None:
+    """lib/ container: relative imports resolve against the stripped base."""
+
+    pkg = tmp_path / "lib" / "yaml"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "loader.py").write_text(
+        "from .error import YAMLError\n", encoding="utf-8"
+    )
+    (pkg / "error.py").write_text("class YAMLError:\n    pass\n", encoding="utf-8")
+    sibling = tmp_path / "lib" / "_ext"
+    sibling.mkdir()
+    (sibling / "__init__.py").write_text("", encoding="utf-8")
+
+    gold = extract_gold(tmp_path)
+
+    assert gold.module_dependencies() == {("lib/yaml/loader.py", "lib/yaml/error.py")}
+    assert gold.symbol_imports() == {("lib/yaml/loader.py", "lib/yaml/error.py", "YAMLError")}
+
+
+def test_extract_gold_with_statements_do_not_crash(tmp_path: Path) -> None:
+    """Top-level and nested ``with`` blocks bind names instead of raising."""
+
+    mod = tmp_path / "mod.py"
+    mod.write_text(
+        "with open('a') as fh:\n"
+        "    data = fh.read()\n"
+        "\n"
+        "if flag:\n"
+        "    with open('b') as g:\n"
+        "        more = g.read()\n"
+        "\n"
+        "async with ctx():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+
+    gold = extract_gold(tmp_path)
+
+    assert gold.file_count == 1
+    assert "data" in gold.symbols["mod.py"]
+    assert "more" in gold.symbols["mod.py"]
+
+
+def test_route_a_scope_rule_is_frozen() -> None:
+    """The pre-registered exclusion rule must not drift silently."""
+
+    assert ROUTE_A_EXCLUDED_TOP_DIRS == (
+        "tests", "test", "docs", "doc", "examples", "example",
+        "benchmarks", "benchmark", "tools", "scripts",
+        "requirements", "ci_tools", "packaging",
+    )
 
 
 def _graph_fixture() -> dict:

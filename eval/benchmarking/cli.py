@@ -32,7 +32,12 @@ if __name__ == "__main__":
         sys.path.insert(0, str(eval_root))
 
 try:
-    from .ast_gold import extract_gold, materialize_git_tree, resolve_commit
+    from .ast_gold import (
+        ROUTE_A_EXCLUDED_TOP_DIRS,
+        extract_gold,
+        materialize_git_tree,
+        resolve_commit,
+    )
     from .evaluator import evaluate_suite
     from .prepare import SUPPORTED_SUITES, prepare_suite
     from .report import render_markdown
@@ -44,7 +49,12 @@ try:
     )
     from .suite import resolve_suite_path
 except ImportError:  # script mode: no parent package context
-    from benchmarking.ast_gold import extract_gold, materialize_git_tree, resolve_commit
+    from benchmarking.ast_gold import (
+        ROUTE_A_EXCLUDED_TOP_DIRS,
+        extract_gold,
+        materialize_git_tree,
+        resolve_commit,
+    )
     from benchmarking.evaluator import evaluate_suite
     from benchmarking.prepare import SUPPORTED_SUITES, prepare_suite
     from benchmarking.report import render_markdown
@@ -203,7 +213,12 @@ def cmd_structeval(args: argparse.Namespace) -> int:
             commit = resolve_commit(repo_root, tag)
             tree_root = materialize_git_tree(repo_root, tag)
             temp_tree = tree_root
-        gold = extract_gold(tree_root, source_tag=tag, commit=commit)
+        excluded = (
+            ROUTE_A_EXCLUDED_TOP_DIRS if args.scope_rule == "route-a" else ()
+        )
+        gold = extract_gold(
+            tree_root, source_tag=tag, commit=commit, excluded_top_dirs=excluded
+        )
         result = evaluate_structure(gold, args.graph)
         if args.baseline_result:
             baseline = json.loads(
@@ -366,6 +381,12 @@ def _add_structeval_parser(subparsers: Any) -> None:
         "--source-tree",
         default=None,
         help="Explicit source tree directory (overrides --source-tag; no git needed)",
+    )
+    parser.add_argument(
+        "--scope-rule",
+        choices=("none", "route-a"),
+        default="none",
+        help="Top-level dir exclusion for gold (route-a = frozen pre-registered rule)",
     )
     parser.add_argument(
         "--repo-root",
