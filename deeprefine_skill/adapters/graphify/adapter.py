@@ -17,6 +17,11 @@ from atlas_rag.vectorstore.create_graph_index import (
 )
 from atlas_rag.vectorstore.embedding_model import BaseEmbeddingModel
 
+from deeprefine_skill.adapters.graphify.passage_roundtrip import (
+    merge_passages,
+    split_passages,
+)
+
 
 def load_graphify_json(path: Path) -> tuple[dict[str, Any], nx.DiGraph]:
     raw = json.loads(path.read_text(encoding="utf-8"))
@@ -200,6 +205,12 @@ def sync_kg_to_graphify(raw: dict[str, Any], kg: nx.DiGraph) -> dict[str, Any]:
     """Merge refined nx graph back into graphify node-link JSON."""
     out = copy.deepcopy(raw)
     links_key = "links" if "links" in out else "edges"
+    # Passages are text sources, not graph participants: the engine filters
+    # them out of its working subgraph at init, so they never reach this kg.
+    # Snapshot them now and re-append after the rebuild — without this, every
+    # write-back silently unstages them and the next run degrades to
+    # closed-book (passage_roundtrip.py).
+    staged_passages = split_passages(out)
 
     old_nodes = {n["id"]: n for n in out.get("nodes", [])}
     new_nodes: list[dict[str, Any]] = []
@@ -235,7 +246,7 @@ def sync_kg_to_graphify(raw: dict[str, Any], kg: nx.DiGraph) -> dict[str, Any]:
 
     out["nodes"] = new_nodes
     out[links_key] = new_links
-    return out
+    return merge_passages(out, staged_passages)
 
 
 def save_graphify_json(
