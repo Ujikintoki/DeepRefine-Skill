@@ -97,6 +97,31 @@ def checkpoints_metadata_path(project_root: Path) -> Path:
     return project_root / "graphify-out" / ".deeprefine" / "checkpoints.json"
 
 
+def proposed_artifacts(project_root: Path) -> list[Path]:
+    """Stale proposed_* refinement artifacts under .deeprefine (sorted).
+
+    ``refine``/``apply`` write per-query proposal files
+    (proposed_refinement_actions_<qid>.txt, proposed_refinement_review[_<qid>]
+    .md/.json) that nothing cleans up, so they accumulate across rounds —
+    round-N leftovers have been misread as round-N+1 proposals in audits
+    before. The authority for what a run proposed is always the log's
+    ``refinement_action_raw`` field; these files are review conveniences.
+    """
+    deep = project_root / "graphify-out" / ".deeprefine"
+    if not deep.is_dir():
+        return []
+    return sorted(deep.glob("proposed_*"))
+
+
+def clear_proposed_artifacts(project_root: Path) -> int:
+    """Delete stale proposed_* artifacts; returns how many files were removed."""
+    removed = 0
+    for path in proposed_artifacts(project_root):
+        path.unlink(missing_ok=True)
+        removed += 1
+    return removed
+
+
 def load_checkpoint_metadata(path: Path) -> list[dict]:
     """Load checkpoint timeline metadata. Returns empty list if file doesn't exist."""
     if not path.is_file():

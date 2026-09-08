@@ -836,6 +836,8 @@ def cmd_rollback(args: argparse.Namespace) -> int:
     deletes them, so every state stays comparable. ``--query <qid>`` undoes
     the LAST refinement of one query precisely (per-run pre-state backup or
     previous checkpoint) and resets that query plus all later ones.
+    Stale proposed_* review artifacts (older than the restored state) are
+    cleared so leftovers cannot be misread as a later round's proposals.
     """
     project = find_project_root(
         Path(args.project_root) if args.project_root else None
@@ -914,6 +916,14 @@ def cmd_rollback(args: argparse.Namespace) -> int:
             print(
                 f"Reset {unmarked} query mark(s) to pending (this query and "
                 "every later one)."
+            )
+        from deeprefine_skill.core.paths import clear_proposed_artifacts
+
+        cleared = clear_proposed_artifacts(project)
+        if cleared:
+            print(
+                f"Cleared {cleared} stale proposed_* file(s) "
+                "(older than the restored state)."
             )
         return 0
 
@@ -1015,6 +1025,14 @@ def cmd_rollback(args: argparse.Namespace) -> int:
         print(
             "No later query marks were pending-reset "
             "(nothing refined after this checkpoint)."
+        )
+    from deeprefine_skill.core.paths import clear_proposed_artifacts
+
+    cleared = clear_proposed_artifacts(project)
+    if cleared:
+        print(
+            f"Cleared {cleared} stale proposed_* file(s) "
+            "(older than the restored state)."
         )
     return 0
 
