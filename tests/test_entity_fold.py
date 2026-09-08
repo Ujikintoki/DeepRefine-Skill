@@ -236,3 +236,63 @@ def test_baseline_nodes_are_never_removed_or_rewritten() -> None:
         assert node_id in kg
         assert kg.nodes[node_id]["id"] == label
     assert key not in kg
+
+
+def test_trailing_parens_fold_bare_phantom_onto_call_shaped_baseline() -> None:
+    """C1: bare LLM name folds onto the ``func()``-shaped baseline twin."""
+    baseline = {
+        "pkg_mod_save_graphify_json": "save_graphify_json()",
+        "pkg_mod_load_graphify_json": "load_graphify_json()",
+    }
+    key = _phantom_key("save_graphify_json")
+    kg = _kg(
+        {**baseline, key: "save_graphify_json"},
+        [(key, "pkg_mod_load_graphify_json", "calls")],
+    )
+    report = fold_refined_entities(kg, baseline)
+
+    assert report["folded"] == {
+        key: {"label": "save_graphify_json", "target": "pkg_mod_save_graphify_json"}
+    }
+    assert key not in kg
+    assert kg.has_edge("pkg_mod_save_graphify_json", "pkg_mod_load_graphify_json")
+
+
+def test_trailing_parens_fold_call_shaped_phantom_onto_bare_baseline() -> None:
+    """C1: the reverse pairing folds too — normalization is symmetric."""
+    baseline = {"pkg_mod_save_graphify_json": "save_graphify_json"}
+    key = _phantom_key("save_graphify_json()")
+    kg = _kg({**baseline, key: "save_graphify_json()"}, [])
+    report = fold_refined_entities(kg, baseline)
+
+    assert report["folded"] == {
+        key: {"label": "save_graphify_json()", "target": "pkg_mod_save_graphify_json"}
+    }
+    assert key not in kg
+
+
+def test_trailing_parens_without_baseline_twin_stays_unmatched() -> None:
+    """C1 guard: normalization must not invent matches that were never there."""
+    baseline = {"pkg_mod_other": "other()"}
+    key = _phantom_key("save_graphify_json")
+    kg = _kg({**baseline, key: "save_graphify_json"}, [])
+    report = fold_refined_entities(kg, baseline)
+
+    assert report["residual"] == [
+        {"key": key, "label": "save_graphify_json", "reason": "unmatched"}
+    ]
+    assert key in kg
+
+
+def test_trailing_parens_ambiguous_pair_is_kept() -> None:
+    """C1 guard: baseline holding both ``func`` and ``func()`` stays ambiguous."""
+    baseline = {
+        "pkg_mod_func_bare": "func",
+        "pkg_mod_func_call": "func()",
+    }
+    key = _phantom_key("func")
+    kg = _kg({**baseline, key: "func"}, [])
+    report = fold_refined_entities(kg, baseline)
+
+    assert report["residual"] == [{"key": key, "label": "func", "reason": "ambiguous"}]
+    assert key in kg

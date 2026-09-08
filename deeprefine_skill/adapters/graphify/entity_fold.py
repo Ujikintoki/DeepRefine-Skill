@@ -22,6 +22,17 @@ from typing import Any
 import networkx as nx
 
 
+def _match_key(label: str) -> str:
+    """Matching key for a label: ignore one trailing ``()`` call-shape marker.
+
+    LLM-proposed function names arrive bare (``save_graphify_json``) while
+    baseline function nodes carry the call shape (``save_graphify_json()``).
+    Matching normalizes both sides, but the labels themselves are never
+    rewritten — the report and the graph keep their original spellings.
+    """
+    return label[:-2] if label.endswith("()") else label
+
+
 def fold_refined_entities(
     kg: nx.DiGraph, baseline_labels: dict[str, str]
 ) -> dict[str, Any]:
@@ -29,11 +40,12 @@ def fold_refined_entities(
 
     A refined node whose key is absent from ``baseline_labels`` (baseline node
     key -> label) was minted by refinement. When its label equals exactly one
-    baseline label — exact match first, then basename match for path-shaped
-    labels like ``deeprefine_skill/cli.py`` — its incident edges are re-homed
-    onto the twin and the phantom is removed. Ambiguous or unmatched phantoms
-    are kept as-is. Relation words are never rewritten, and no baseline node
-    is ever removed or modified.
+    baseline label — exact match first (trailing ``()`` ignored on both
+    sides), then basename match for path-shaped labels like
+    ``deeprefine_skill/cli.py`` — its incident edges are re-homed onto the
+    twin and the phantom is removed. Ambiguous or unmatched phantoms are kept
+    as-is. Relation words are never rewritten, and no baseline node is ever
+    removed or modified.
 
     Returns an audit report: ``folded`` (phantom key -> label/target),
     ``residual`` (kept phantoms with the reason), edge counters, and the
@@ -41,7 +53,7 @@ def fold_refined_entities(
     """
     label_to_ids: dict[str, list[str]] = {}
     for node_id, label in baseline_labels.items():
-        label_to_ids.setdefault(label, []).append(node_id)
+        label_to_ids.setdefault(_match_key(label), []).append(node_id)
 
     fold_map: dict[str, str] = {}
     folded: dict[str, dict[str, str]] = {}
@@ -50,16 +62,17 @@ def fold_refined_entities(
         if key in baseline_labels:
             continue
         label = str(kg.nodes[key].get("id") or key)
+        match_key = _match_key(label)
         target: str | None = None
         reason: str | None = None
-        candidates = label_to_ids.get(label)
+        candidates = label_to_ids.get(match_key)
         if candidates is not None and len(candidates) == 1:
             target = candidates[0]
         elif candidates is not None:
             reason = "ambiguous"
         else:
-            basename = posixpath.basename(label)
-            basename_candidates = label_to_ids.get(basename) if basename != label else None
+            base_key = _match_key(posixpath.basename(label))
+            basename_candidates = label_to_ids.get(base_key) if base_key != match_key else None
             if basename_candidates is not None and len(basename_candidates) == 1:
                 target = basename_candidates[0]
             elif basename_candidates is not None:
