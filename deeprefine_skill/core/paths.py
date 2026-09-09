@@ -122,6 +122,33 @@ def clear_proposed_artifacts(project_root: Path) -> int:
     return removed
 
 
+def cache_bundles(project_root: Path) -> list[Path]:
+    """Index cache bundles under .deeprefine/cache (sorted, every scope variant).
+
+    ``refine`` caches the built working data (graphify raw + embeddings) and
+    trusts it purely by mtime (``cache_pkl.st_mtime >= graph.json.st_mtime``).
+    Rollback restores graph.json via ``shutil.copy2``, which preserves the
+    backup's original mtime — an older state reappears carrying an older
+    mtime, so a bundle built from a newer, since-undone state can pass the
+    freshness check and get replayed silently. The bundles are pure
+    derivatives of graph.json (``deeprefine_data[-<scope>].pkl``), so a
+    rollback invalidates them all.
+    """
+    cache = project_root / "graphify-out" / ".deeprefine" / "cache"
+    if not cache.is_dir():
+        return []
+    return sorted(cache.glob("deeprefine_data*.pkl"))
+
+
+def clear_cache_bundles(project_root: Path) -> int:
+    """Delete index cache bundles; returns how many files were removed."""
+    removed = 0
+    for path in cache_bundles(project_root):
+        path.unlink(missing_ok=True)
+        removed += 1
+    return removed
+
+
 def load_checkpoint_metadata(path: Path) -> list[dict]:
     """Load checkpoint timeline metadata. Returns empty list if file doesn't exist."""
     if not path.is_file():

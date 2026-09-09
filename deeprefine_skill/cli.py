@@ -838,6 +838,9 @@ def cmd_rollback(args: argparse.Namespace) -> int:
     previous checkpoint) and resets that query plus all later ones.
     Stale proposed_* review artifacts (older than the restored state) are
     cleared so leftovers cannot be misread as a later round's proposals.
+    Index cache bundles are also cleared: the restore preserves the backup's
+    mtime, so a bundle built from the undone state could otherwise pass the
+    mtime freshness check and be silently replayed against the restored graph.
     """
     project = find_project_root(
         Path(args.project_root) if args.project_root else None
@@ -917,13 +920,22 @@ def cmd_rollback(args: argparse.Namespace) -> int:
                 f"Reset {unmarked} query mark(s) to pending (this query and "
                 "every later one)."
             )
-        from deeprefine_skill.core.paths import clear_proposed_artifacts
+        from deeprefine_skill.core.paths import (
+            clear_cache_bundles,
+            clear_proposed_artifacts,
+        )
 
         cleared = clear_proposed_artifacts(project)
         if cleared:
             print(
                 f"Cleared {cleared} stale proposed_* file(s) "
                 "(older than the restored state)."
+            )
+        bundles = clear_cache_bundles(project)
+        if bundles:
+            print(
+                f"Cleared {bundles} index cache bundle(s) "
+                "(the next refine rebuilds from the restored graph.json)."
             )
         return 0
 
@@ -1026,13 +1038,22 @@ def cmd_rollback(args: argparse.Namespace) -> int:
             "No later query marks were pending-reset "
             "(nothing refined after this checkpoint)."
         )
-    from deeprefine_skill.core.paths import clear_proposed_artifacts
+    from deeprefine_skill.core.paths import (
+        clear_cache_bundles,
+        clear_proposed_artifacts,
+    )
 
     cleared = clear_proposed_artifacts(project)
     if cleared:
         print(
             f"Cleared {cleared} stale proposed_* file(s) "
             "(older than the restored state)."
+        )
+    bundles = clear_cache_bundles(project)
+    if bundles:
+        print(
+            f"Cleared {bundles} index cache bundle(s) "
+            "(the next refine rebuilds from the restored graph.json)."
         )
     return 0
 
