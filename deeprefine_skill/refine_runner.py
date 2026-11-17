@@ -18,6 +18,7 @@ from .adapter_graphify import (
     sync_kg_to_graphify,
 )
 from .action_review import write_review_files
+from .batch_isolation import run_query_isolated
 from .history import append_history, mark_refined, query_id
 from .paths import checkpoints_metadata_path, create_checkpoint
 
@@ -107,6 +108,7 @@ def run_refine(
     base_top_k: int = 5,
     max_hops: int = 4,
     apply: bool = False,
+    gen_answer: bool = False,
 ) -> dict[str, Any]:
     if not graph_path.is_file():
         raise FileNotFoundError(f"graphify graph not found: {graph_path}")
@@ -126,7 +128,7 @@ def run_refine(
         max_triple_num=20,
         max_triple_num_by_step=[5, 10, 15, 20],
         history_horizon_size=4,
-        if_gen_answer=False,
+        if_gen_answer=gen_answer,
     )
 
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +136,7 @@ def run_refine(
     refined_ids: set[str] = set()
     summary_rows: list[dict[str, Any]] = []
     completed = 0
+    failed = 0
     meta_path = checkpoints_metadata_path(graph_path.parent.parent)
 
     def _persist() -> None:
@@ -166,7 +169,29 @@ def run_refine(
                 query = sample["query"]
                 qid = query_id(query, sample.get("id"))
                 print(f"\n=== [{qid}] {query}")
-                final_answer, _, refinement_result = deeprefine.refine(query=query)
+                result, error = run_query_isolated(deeprefine, query)
+                if error is not None:
+                    failed += 1
+                    data["KG"] = deeprefine.kg
+                    record = refinement_to_jsonable(sample, None, None)
+                    record["error"] = error
+                    log_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    log_f.flush()
+                    summary_rows.append(
+                        {
+                            "id": qid,
+                            "query": query,
+                            "steps": 0,
+                            "action_count": 0,
+                            "status": "failed",
+                            "error": error,
+                        }
+                    )
+                    print(f"  query failed: {error}")
+                    continue
+
+                assert result is not None
+                final_answer, _, refinement_result = result
                 record = refinement_to_jsonable(sample, final_answer, refinement_result)
                 log_f.write(json.dumps(record, ensure_ascii=False) + "\n")
                 log_f.flush()
@@ -182,6 +207,7 @@ def run_refine(
                         "query": query,
                         "steps": n_steps,
                         "action_count": rr.get("refinement_action_count", 0),
+                        "status": "ok",
                     }
                 )
                 if apply:
@@ -225,6 +251,8 @@ def run_refine(
         "nodes": deeprefine.kg.number_of_nodes(),
         "edges": deeprefine.kg.number_of_edges(),
         "queries_processed": len(queries),
+        "queries_succeeded": completed,
+        "queries_failed": failed,
         "mode": "apply" if apply else "dry-run",
         "summary": summary_rows,
     }
@@ -237,6 +265,7 @@ def refine_from_history(
     query: str | None = None,
     rebuild_index: bool = False,
     apply: bool = False,
+    gen_answer: bool = False,
 ) -> dict[str, Any]:
     if query:
         entry = append_history(paths["history"], query, source="deeprefine")
@@ -261,4 +290,5 @@ def refine_from_history(
         queries=queries,
         rebuild_index=rebuild_index,
         apply=apply,
+        gen_answer=gen_answer,
     )
